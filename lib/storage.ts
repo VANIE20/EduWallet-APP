@@ -1,0 +1,1532 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
+
+// Local storage keys for offline/cache
+const KEYS = {
+  LOGGED_IN_USER: 'eduwallet_logged_in_user',
+  ROLE: 'eduwallet_role',
+  CURRENT_USER_ID: 'eduwallet_current_user_id',
+};
+
+export interface SpendingLimit {
+  dailyLimit: number;
+  isActive: boolean;
+}
+
+export interface AllowanceConfig {
+  amount: number;
+  frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
+  dayOfWeek: number;
+  isActive: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  referenceId: string;
+  type: 'deposit' | 'allowance' | 'expense';
+  amount: number;
+  description: string;
+  category?: string;
+  date: string;
+  from?: 'guardian' | 'student';
+  to?: 'guardian' | 'student';
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  iconName: string;
+  createdAt: string;
+}
+
+export type UserRole = 'guardian' | 'student' | null;
+
+export interface LoggedInUser {
+  id: string;
+  email: string;
+  displayName: string;
+  phoneNumber?: string;
+  role: UserRole;
+  linkedUserIds: string[];
+  isLinked: boolean;
+}
+
+export interface PendingInvite {
+  id: string;
+  guardianId: string;
+  guardianEmail: string;
+  guardianName: string;
+  studentEmail: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt: string;
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  return await AsyncStorage.getItem(KEYS.CURRENT_USER_ID);
+}
+
+async function setCurrentUserId(userId: string | null): Promise<void> {
+  if (userId) {
+    await AsyncStorage.setItem(KEYS.CURRENT_USER_ID, userId);
+  } else {
+    await AsyncStorage.removeItem(KEYS.CURRENT_USER_ID);
+  }
+}
+
+// ==================== AUTHENTICATION WITH PIN + OTP ====================
+
+export async function signUpWithPinAndOTP(
+  email: string,
+  pin: string,
+  displayName: string,
+  role: 'guardian' | 'student'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!/^\d{6}$/.test(pin)) {
+      return { success: false, error: 'PIN must be exactly 6 digits' };
+    }
+
+    // Build username before signUp so the trigger can read it from user_metadata
+    const emailUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    const tempUsername = `${emailUsername}_${Date.now().toString(36)}`;
+
+    // Check if email already exists in public.users before attempting signUp
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle();
+
+    if (existingUser) {
+      return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password: pin,
+      options: {
+        data: {
+          display_name: displayName,
+          role: role,
+          username: tempUsername,
+        },
+        emailRedirectTo: undefined,
+      }
+    });
+
+    if (authError) {
+      // Supabase returns a vague 500 when email already exists in auth.users
+      // (even if public.users has no row for it yet from a previous failed signup)
+      if (
+        authError.message?.includes('Database error saving new user') ||
+        authError.status === 500
+      ) {
+        // Try sending an OTP to the existing account instead so user can still log in
+        const { error: otpRetryError } = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+        if (!otpRetryError) {
+          // OTP sent — the account exists, treat as duplicate
+          return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+        }
+        return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+      }
+      return { success: false, error: authError.message };
+    }
+
+    // Supabase sometimes returns a fake user object instead of an error for duplicate emails
+    if (!authData.user) {
+      return { success: false, error: 'Failed to create account. Please try again.' };
+    }
+
+    // If identities is empty, the email is already registered
+    if (authData.user.identities && authData.user.identities.length === 0) {
+      return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    }
+
+    // Use the real user id now that we have it
+    const uniqueUsername = `${emailUsername}_${authData.user.id.substring(0, 8)}`;
+
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+
+    if (!existingProfile) {
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: email.toLowerCase().trim(),
+          username: uniqueUsername,
+          display_name: displayName.trim() || 'User',
+          role: role,
+        });
+
+      if (profileError) {
+        console.error('Early profile insert FULL error:', JSON.stringify({
+          message: profileError.message,
+          code: profileError.code,
+          details: profileError.details,
+          hint: profileError.hint,
+        }, null, 2));
+      }
+    }
+
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: email,
+      options: {
+        shouldCreateUser: false,
+      }
+    });
+
+    if (otpError) {
+      console.warn('OTP send failed:', otpError);
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function verifyOTP(
+  email: string,
+  token: string,
+  roleOverride?: 'guardian' | 'student'
+): Promise<{ user: LoggedInUser | null; success: boolean; error?: string }> {
+  try {
+    const { data: authData, error: authError } = await supabase.auth.verifyOtp({
+      email: email,
+      token: token,
+      type: 'email',
+    });
+
+    if (authError) {
+      return { user: null, success: false, error: authError.message };
+    }
+
+    if (!authData.user) {
+      return { user: null, success: false, error: 'Verification failed' };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Re-fetch the auth user to ensure we have the latest user_metadata (display_name)
+    // since verifyOtp doesn't always return the full metadata from signUp
+    const { data: freshAuthData } = await supabase.auth.getUser();
+    const authUser = freshAuthData?.user || authData.user;
+    const metaDisplayName = authUser.user_metadata?.display_name
+      || authData.user.user_metadata?.display_name
+      || '';
+
+    let profile = null;
+
+    // Try fetching by id first, then by auth_user_id (handles both schema styles)
+    try {
+      const { data: byId } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authData.user.id)
+        .maybeSingle();
+      if (byId) {
+        profile = byId;
+      } else {
+        const { data: byAuthId } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_user_id', authData.user.id)
+          .maybeSingle();
+        profile = byAuthId;
+      }
+    } catch (err) {
+      console.log('Profile fetch failed, will create manually');
+    }
+
+    // If we found an existing profile but display_name is missing/generic, patch it
+    if (profile && metaDisplayName && (!profile.display_name || profile.display_name === 'User')) {
+      await supabase
+        .from('users')
+        .update({ display_name: metaDisplayName })
+        .eq('id', profile.id);
+      profile = { ...profile, display_name: metaDisplayName };
+    }
+
+    // If roleOverride is provided (from signup flow) and the stored role doesn't match,
+    // correct it — this handles the case where the early insert used wrong metadata
+    if (profile && roleOverride && profile.role !== roleOverride) {
+      await supabase
+        .from('users')
+        .update({ role: roleOverride })
+        .eq('id', profile.id);
+      profile = { ...profile, role: roleOverride };
+    }
+
+    if (!profile) {
+      const emailUsername = email.split('@')[0].toLowerCase();
+      const uniqueUsername = `${emailUsername}_${authData.user.id.substring(0, 8)}`;
+
+      const { data: schemaCheck } = await supabase
+        .from('users')
+        .select('*')
+        .limit(1);
+
+      const hasAuthUserIdColumn = schemaCheck && schemaCheck.length > 0 && 'auth_user_id' in schemaCheck[0];
+
+      let insertData: any = {
+        email: (authData.user.email || email).toLowerCase().trim(),
+        username: uniqueUsername,
+        display_name: metaDisplayName || 'User',
+        role: roleOverride || authUser.user_metadata?.role || authData.user.user_metadata?.role || 'student',
+      };
+
+      // Always set id = authData.user.id so upsert can conflict on 'id'.
+      // Also set auth_user_id when the column exists, for backward compat.
+      insertData.id = authData.user.id;
+      if (hasAuthUserIdColumn) {
+        insertData.auth_user_id = authData.user.id;
+      }
+
+      // Delete any stale row with the same email before inserting,
+      // using the correct identity column for this schema.
+      const staleDeleteQuery = supabase
+        .from('users')
+        .delete()
+        .eq('email', (authData.user.email || email).toLowerCase().trim());
+      if (hasAuthUserIdColumn) {
+        await staleDeleteQuery.neq('auth_user_id', authData.user.id);
+      } else {
+        await staleDeleteQuery.neq('id', authData.user.id);
+      }
+
+      const { data: newProfile, error: insertError } = await supabase
+        .from('users')
+        .upsert(insertData, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating user profile:', insertError);
+        const user: LoggedInUser = {
+          id: authData.user.id,
+          email: authData.user.email || email,
+          displayName: metaDisplayName || 'User',
+          phoneNumber: authData.user.user_metadata?.phone || undefined,
+          role: (roleOverride || authUser.user_metadata?.role || authData.user.user_metadata?.role || 'student') as UserRole,
+          linkedUserIds: [],
+          isLinked: false,
+        };
+        await setLoggedInUser(user);
+        return { user, success: true };
+      }
+
+      profile = newProfile;
+    }
+
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${profile.id},student_id.eq.${profile.id}`);
+
+    const linkedUserIds: string[] = [];
+    links?.forEach(link => {
+      if (link.guardian_id === profile.id && link.student_id) {
+        linkedUserIds.push(link.student_id);
+      }
+      if (link.student_id === profile.id && link.guardian_id) {
+        linkedUserIds.push(link.guardian_id);
+      }
+    });
+
+    const user: LoggedInUser = {
+      id: profile.id,
+      email: profile.email,
+      displayName: profile.display_name,
+      phoneNumber: profile.phone_number || undefined,
+      role: profile.role as UserRole,
+      linkedUserIds: linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+
+    await setLoggedInUser(user);
+    return { user, success: true };
+  } catch (error: any) {
+    return { user: null, success: false, error: error.message };
+  }
+}
+
+export async function signInWithPin(
+  email: string,
+  pin: string
+): Promise<{ user: LoggedInUser | null; error?: string }> {
+  try {
+    if (!/^\d{6}$/.test(pin)) {
+      return { user: null, error: 'PIN must be exactly 6 digits' };
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: pin,
+    });
+
+    if (authError) {
+      return { user: null, error: authError.message };
+    }
+
+    if (!authData.user) {
+      return { user: null, error: 'Login failed' };
+    }
+
+    // Try both id and auth_user_id to handle both schema styles
+    let profileFoundViaAuthUserId = false;
+    let { data: profile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+
+    if (!profile) {
+      const { data: profileByAuthId } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authData.user.id)
+        .maybeSingle();
+      if (profileByAuthId) {
+        profile = profileByAuthId;
+        profileFoundViaAuthUserId = true;
+      }
+    }
+
+    // If profile exists but display_name is missing/generic, patch it from auth metadata
+    const metaName = authData.user.user_metadata?.display_name;
+    if (profile && metaName && (!profile.display_name || profile.display_name === 'User')) {
+      await supabase
+        .from('users')
+        .update({ display_name: metaName })
+        .eq('id', profile.id);
+      profile = { ...profile, display_name: metaName };
+    }
+
+    let userProfile = profile;
+    if (!profile) {
+      const emailUsername = email.split('@')[0].toLowerCase();
+      const uniqueUsername = `${emailUsername}_${authData.user.id.substring(0, 8)}`;
+
+      const { data: schemaCheck } = await supabase
+        .from('users')
+        .select('*')
+        .limit(1);
+
+      const hasAuthUserIdColumn = schemaCheck && schemaCheck.length > 0 && 'auth_user_id' in schemaCheck[0];
+
+      let insertData: any = {
+        email: (authData.user.email || email).toLowerCase().trim(),
+        username: uniqueUsername,
+        display_name: authData.user.user_metadata?.display_name || 'User',
+        role: authData.user.user_metadata?.role || 'student',
+      };
+
+      if (hasAuthUserIdColumn) {
+        insertData.auth_user_id = authData.user.id;
+      } else {
+        insertData.id = authData.user.id;
+      }
+
+      const { data: newProfile, error: insertError } = await supabase
+        .from('users')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (insertError) {
+        const user: LoggedInUser = {
+          id: authData.user.id,
+          email: authData.user.email || email,
+          displayName: authData.user.user_metadata?.display_name || 'User',
+          phoneNumber: authData.user.user_metadata?.phone || undefined,
+          role: (authData.user.user_metadata?.role || 'student') as UserRole,
+          linkedUserIds: [],
+          isLinked: false,
+        };
+        await setLoggedInUser(user);
+        return { user };
+      }
+
+      userProfile = newProfile;
+    }
+
+    // When the profile was found via auth_user_id (old schema), the table's
+    // own UUID differs from auth.uid(). We store auth.uid() as user.id so
+    // that RLS policies (which check auth.uid()) align correctly.
+    const effectiveId = profileFoundViaAuthUserId ? authData.user.id : userProfile.id;
+
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${effectiveId},student_id.eq.${effectiveId}`);
+
+    const linkedUserIds: string[] = [];
+    links?.forEach(link => {
+      if (link.guardian_id === effectiveId && link.student_id) {
+        linkedUserIds.push(link.student_id);
+      }
+      if (link.student_id === effectiveId && link.guardian_id) {
+        linkedUserIds.push(link.guardian_id);
+      }
+    });
+
+    const user: LoggedInUser = {
+      id: effectiveId,
+      email: userProfile.email,
+      displayName: userProfile.display_name,
+      phoneNumber: userProfile.phone_number || undefined,
+      role: userProfile.role as UserRole,
+      linkedUserIds: linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+
+    await setLoggedInUser(user);
+    return { user };
+  } catch (error: any) {
+    return { user: null, error: error.message };
+  }
+}
+
+// Alias for backward compatibility
+export const signUpWithOTP = signUpWithPinAndOTP;
+export const signIn = signInWithPin;
+
+export async function signOut(): Promise<void> {
+  await supabase.auth.signOut();
+  await setLoggedInUser(null);
+}
+
+export async function resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: 'allowancemanager://reset-password',
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+// ==================== ACCOUNT LINKING ====================
+
+export async function sendStudentInvite(
+  studentEmail: string
+): Promise<{ success: boolean; error?: string; inviteId?: string }> {
+  try {
+    const user = await getLoggedInUser();
+    if (!user || user.role !== 'guardian') {
+      return { success: false, error: 'Only guardians can send invites' };
+    }
+
+    // Try to find student in users table (try with and without role filter)
+    let studentUser: { id: string; email: string; role: string } | null = null;
+
+    const normalizedEmail = studentEmail.toLowerCase().trim();
+
+    const { data: studentWithRole, error: e1 } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('email', normalizedEmail)
+      .eq('role', 'student')
+      .maybeSingle();
+
+    if (studentWithRole) {
+      studentUser = studentWithRole;
+    } else {
+      // Fallback: find by email regardless of role
+      const { data: studentAny, error: e2 } = await supabase
+        .from('users')
+        .select('id, email, role')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+  
+      if (studentAny) {
+        studentUser = studentAny;
+      }
+    }
+
+    if (!studentUser) {
+      return { success: false, error: `No account found with email "${normalizedEmail}". Make sure the student has signed up and verified their account first.` };
+    }
+
+    if (studentUser.role === 'guardian') {
+      return { success: false, error: 'This account is a guardian account, not a student account.' };
+    }
+
+    const { data: existingLink } = await supabase
+      .from('user_links')
+      .select('*')
+      .eq('guardian_id', user.id)
+      .eq('student_id', studentUser.id)
+      .maybeSingle();
+
+    if (existingLink) {
+      // Link exists in DB — sync local state so the app reflects this correctly
+      const { data: allLinks } = await supabase
+        .from('user_links')
+        .select('guardian_id, student_id')
+        .or(`guardian_id.eq.${user.id},student_id.eq.${user.id}`);
+
+      const linkedUserIds: string[] = [];
+      allLinks?.forEach(link => {
+        if (link.guardian_id === user.id && link.student_id) linkedUserIds.push(link.student_id);
+        if (link.student_id === user.id && link.guardian_id) linkedUserIds.push(link.guardian_id);
+      });
+
+      const updatedUser: LoggedInUser = {
+        ...user,
+        linkedUserIds,
+        isLinked: linkedUserIds.length > 0,
+      };
+      await setLoggedInUser(updatedUser);
+
+      return { success: false, error: 'Already linked to this student — your account has been refreshed. Please go back to your dashboard.' };
+    }
+
+    // Resolve the actual `users` table UUID for the guardian.
+    // user.id from AsyncStorage may be the auth UUID; pending_invites.guardian_id
+    // is a FK to users.id (the table's own row UUID), which can differ.
+    const [profileById, profileByAuthId] = await Promise.all([
+      supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
+      supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
+    ]);
+    const guardianTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+
+    const { data: invite, error: inviteError } = await supabase
+      .from('pending_invites')
+      .insert({
+        guardian_id: guardianTableId,
+        guardian_email: user.email,
+        guardian_name: user.displayName,
+        student_email: studentEmail,
+        student_id: studentUser.id,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (inviteError) {
+      return { success: false, error: inviteError.message };
+    }
+
+    return { success: true, inviteId: invite.id };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getPendingInvites(): Promise<PendingInvite[]> {
+  const user = await getLoggedInUser();
+  if (!user || user.role !== 'student') return [];
+
+  const { data, error } = await supabase
+    .from('pending_invites')
+    .select('*')
+    .eq('student_email', user.email)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching invites:', error);
+    return [];
+  }
+
+  return (data || []).map(invite => ({
+    id: invite.id,
+    guardianId: invite.guardian_id,
+    guardianEmail: invite.guardian_email,
+    guardianName: invite.guardian_name,
+    studentEmail: invite.student_email,
+    status: invite.status,
+    createdAt: invite.created_at,
+  }));
+}
+
+// FIX #4: removed signIn(user.email, '') call with empty PIN — now uses existing session to refresh
+export async function acceptInvite(inviteId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getLoggedInUser();
+    if (!user || user.role !== 'student') {
+      return { success: false, error: 'Only students can accept invites' };
+    }
+
+    const { data: invite, error: inviteError } = await supabase
+      .from('pending_invites')
+      .select('*')
+      .eq('id', inviteId)
+      .single();
+
+    if (inviteError || !invite) {
+      return { success: false, error: 'Invite not found' };
+    }
+
+    // Resolve the actual users table UUID for the student.
+    // user.id from AsyncStorage may be the auth UUID; user_links.student_id
+    // is a FK to users.id (the table's own row UUID), which can differ.
+    const [profileById, profileByAuthId] = await Promise.all([
+      supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
+      supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
+    ]);
+    const studentTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+
+    // Use SECURITY DEFINER RPC to bypass RLS policy restrictions on user_links
+    const { error: linkError } = await supabase
+      .rpc('insert_user_link', {
+        p_guardian_id: invite.guardian_id,
+        p_student_id: studentTableId,
+      });
+
+    if (linkError) {
+      return { success: false, error: linkError.message };
+    }
+
+    await supabase
+      .from('pending_invites')
+      .update({ status: 'accepted' })
+      .eq('id', inviteId);
+
+    // Use studentTableId for the link refresh query
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${studentTableId},student_id.eq.${studentTableId}`);
+
+    const linkedUserIds: string[] = [];
+    links?.forEach(link => {
+      if (link.guardian_id === studentTableId && link.student_id) linkedUserIds.push(link.student_id);
+      if (link.student_id === studentTableId && link.guardian_id) linkedUserIds.push(link.guardian_id);
+    });
+
+    const updatedUser: LoggedInUser = {
+      ...user,
+      linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+    await setLoggedInUser(updatedUser);
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function rejectInvite(inviteId: string): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('pending_invites')
+    .update({ status: 'rejected' })
+    .eq('id', inviteId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function getLinkedStudents(): Promise<LoggedInUser[]> {
+  const user = await getLoggedInUser();
+  if (!user || user.role !== 'guardian') return [];
+
+  // Resolve the actual users table UUID — user.id from AsyncStorage may be
+  // the auth UUID which differs from guardian_id in user_links (table row UUID).
+  const [profileById, profileByAuthId] = await Promise.all([
+    supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
+    supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
+  ]);
+  const guardianTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+
+  const { data: links } = await supabase
+    .from('user_links')
+    .select(`
+      student_id,
+      users!user_links_student_id_fkey (
+        id,
+        email,
+        display_name,
+        role,
+        phone_number
+      )
+    `)
+    .eq('guardian_id', guardianTableId);
+
+  if (!links) return [];
+
+  return links.map((link: any) => ({
+    id: link.users.id,
+    email: link.users.email,
+    displayName: link.users.display_name,
+    phoneNumber: link.users.phone_number || undefined,
+    role: link.users.role,
+    linkedUserIds: [user.id],
+    isLinked: true,
+  }));
+}
+
+export async function unlinkStudent(studentId: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getLoggedInUser();
+  if (!user || user.role !== 'guardian') {
+    return { success: false, error: 'Only guardians can unlink students' };
+  }
+
+  const { error } = await supabase
+    .from('user_links')
+    .delete()
+    .eq('guardian_id', user.id)
+    .eq('student_id', studentId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+// ==================== USER MANAGEMENT ====================
+
+export async function getLoggedInUser(): Promise<LoggedInUser | null> {
+  const val = await AsyncStorage.getItem(KEYS.LOGGED_IN_USER);
+  return val ? JSON.parse(val) : null;
+}
+
+// Re-fetches link status AND display name from Supabase on app load to fix stale AsyncStorage
+export async function refreshUserLinkStatus(user: LoggedInUser): Promise<LoggedInUser> {
+  try {
+    // Fetch profile first (try both id and auth_user_id), including the table's own `id`
+    const [profileByIdResult, profileByAuthIdResult] = await Promise.all([
+      supabase
+        .from('users')
+        .select('id, display_name, role')
+        .eq('id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('users')
+        .select('id, display_name, role')
+        .eq('auth_user_id', user.id)
+        .maybeSingle(),
+    ]);
+
+    const freshProfile = profileByIdResult.data || profileByAuthIdResult.data;
+
+    console.log('[refreshUserLinkStatus] user.id:', user.id);
+    console.log('[refreshUserLinkStatus] profileById:', JSON.stringify(profileByIdResult.data));
+    console.log('[refreshUserLinkStatus] profileByAuthId:', JSON.stringify(profileByAuthIdResult.data));
+    console.log('[refreshUserLinkStatus] freshProfile:', JSON.stringify(freshProfile));
+
+    // KEY FIX: use the profile's actual table `id` for the link query.
+    // When a profile is stored with auth_user_id, freshProfile.id is the table's
+    // own UUID — which is what guardian_id/student_id in user_links references.
+    // Using user.id (the auth UUID) in that case returns 0 rows → isLinked: false.
+    const linkQueryId = freshProfile?.id ?? user.id;
+
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${linkQueryId},student_id.eq.${linkQueryId}`);
+
+    const linkedUserIds: string[] = [];
+    links?.forEach(link => {
+      if (link.guardian_id === linkQueryId && link.student_id) linkedUserIds.push(link.student_id);
+      if (link.student_id === linkQueryId && link.guardian_id) linkedUserIds.push(link.guardian_id);
+    });
+
+    const freshDisplayName =
+      freshProfile?.display_name && freshProfile.display_name !== 'User'
+        ? freshProfile.display_name
+        : user.displayName;
+
+    console.log('[refreshUserLinkStatus] linkQueryId used:', linkQueryId);
+    console.log('[refreshUserLinkStatus] linkedUserIds found:', linkedUserIds);
+    console.log('[refreshUserLinkStatus] freshDisplayName chosen:', freshDisplayName);
+
+    const updatedUser: LoggedInUser = {
+      ...user,
+      displayName: freshDisplayName,
+      linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+
+    await setLoggedInUser(updatedUser);
+    return updatedUser;
+  } catch {
+    // If Supabase call fails, fall back to cached value
+    return user;
+  }
+}
+
+export async function setLoggedInUser(user: LoggedInUser | null): Promise<void> {
+  if (user) {
+    await AsyncStorage.setItem(KEYS.LOGGED_IN_USER, JSON.stringify(user));
+    await setRole(user.role);
+    await setCurrentUserId(user.id);
+  } else {
+    await AsyncStorage.removeItem(KEYS.LOGGED_IN_USER);
+    await setRole(null);
+    await setCurrentUserId(null);
+  }
+}
+
+export async function getRole(): Promise<UserRole> {
+  const role = await AsyncStorage.getItem(KEYS.ROLE);
+  return (role as UserRole) || null;
+}
+
+export async function setRole(role: UserRole): Promise<void> {
+  if (role) {
+    await AsyncStorage.setItem(KEYS.ROLE, role);
+  } else {
+    await AsyncStorage.removeItem(KEYS.ROLE);
+  }
+}
+
+// ==================== WALLET MANAGEMENT ====================
+
+/**
+ * Resolves the actual public.users table `id` for a given auth-or-profile UUID.
+ *
+ * Some accounts were created under an older schema where `users.auth_user_id = auth.uid()`
+ * and `users.id` is an independent UUID. Wallet FK constraints reference `users.id`,
+ * so passing the auth UUID for old-schema accounts causes 23503/23505 errors.
+ * This helper always returns the real row `id` regardless of schema.
+ */
+async function resolveProfileId(candidateId: string): Promise<string | null> {
+  const { data: byId } = await supabase
+    .from('users').select('id').eq('id', candidateId).maybeSingle();
+  if (byId) return byId.id;
+
+  const { data: byAuthId } = await supabase
+    .from('users').select('id').eq('auth_user_id', candidateId).maybeSingle();
+  if (byAuthId) return byAuthId.id;
+
+  return null;
+}
+
+export async function getGuardianWallet(): Promise<number> {
+  const user = await getLoggedInUser();
+  if (!user) return 0;
+
+  const rawId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  if (!rawId) return 0;
+
+  const guardianId = await resolveProfileId(rawId);
+  if (!guardianId) return 0;
+
+  const { data, error } = await supabase
+    .rpc('get_or_create_wallet', { p_user_id: guardianId });
+
+  if (error) {
+    console.error('Error fetching guardian wallet:', error);
+    return 0;
+  }
+
+  return data?.[0]?.balance || 0;
+}
+
+export async function setGuardianWallet(amount: number): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  const rawId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  if (!rawId) return;
+
+  const guardianId = await resolveProfileId(rawId);
+  if (!guardianId) return;
+
+  const { error } = await supabase
+    .from('wallets')
+    .update({ balance: amount, updated_at: new Date().toISOString() })
+    .eq('user_id', guardianId);
+
+  if (error) {
+    console.error('Error updating guardian wallet:', error);
+  }
+}
+
+// Atomically add an amount to the guardian wallet.
+// Tries the deposit_to_wallet RPC first; if that doesn't exist or fails,
+// falls back to a manual read-then-update so the deposit always goes through.
+export async function depositToGuardianWallet(amount: number): Promise<number> {
+  const user = await getLoggedInUser();
+  if (!user) throw new Error('Not logged in');
+
+  const rawId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  if (!rawId) throw new Error('No guardian account found');
+
+  const guardianId = await resolveProfileId(rawId);
+  if (!guardianId) throw new Error('Could not resolve wallet owner — please re-login and try again');
+
+  // --- Try atomic RPC first ---
+  const { data: rpcData, error: rpcError } = await supabase
+    .rpc('deposit_to_wallet', { p_user_id: guardianId, p_amount: amount });
+
+  if (!rpcError && rpcData != null) {
+    // RPC exists and succeeded — return new balance
+    return rpcData as number;
+  }
+
+  // --- Fallback: manual balance read + update ---
+  // This handles the case where deposit_to_wallet RPC hasn't been created in Supabase yet.
+  const { data: walletRows, error: getErr } = await supabase
+    .rpc('get_or_create_wallet', { p_user_id: guardianId });
+
+  if (getErr) throw new Error(`Could not read wallet: ${getErr.message}`);
+
+  const currentBalance: number = walletRows?.[0]?.balance ?? 0;
+  const newBalance = currentBalance + amount;
+
+  const { error: updateErr } = await supabase
+    .from('wallets')
+    .update({ balance: newBalance, updated_at: new Date().toISOString() })
+    .eq('user_id', guardianId);
+
+  if (updateErr) throw new Error(`Could not update wallet balance: ${updateErr.message}`);
+
+  return newBalance;
+}
+
+export async function getStudentWallet(studentId?: string): Promise<number> {
+  const user = await getLoggedInUser();
+  if (!user) return 0;
+
+  const rawId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawId) return 0;
+
+  const targetStudentId = await resolveProfileId(rawId);
+  if (!targetStudentId) return 0;
+
+  const { data, error } = await supabase
+    .rpc('get_or_create_wallet', { p_user_id: targetStudentId });
+
+  if (error) {
+    console.error('Error fetching student wallet:', error);
+    return 0;
+  }
+
+  return data?.[0]?.balance || 0;
+}
+
+export async function setStudentWallet(amount: number, studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  const rawId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawId) return;
+
+  const targetStudentId = (await resolveProfileId(rawId)) ?? rawId;
+
+  const { error } = await supabase
+    .from('wallets')
+    .upsert({ user_id: targetStudentId, balance: amount }, { onConflict: 'user_id' });
+
+  if (error) {
+    console.error('Error updating student wallet:', error);
+  }
+}
+
+// FIX #7: Changed .single() → .maybeSingle() to prevent PGRST116 crashes
+export async function getAllowanceConfig(studentId?: string): Promise<AllowanceConfig | null> {
+  const user = await getLoggedInUser();
+  if (!user) return null;
+
+  const rawGuardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  // Always resolve a specific student — never query without student_id filter
+  // (a guardian has one row per student, querying without filter returns multiple rows)
+  const rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+
+  if (!rawGuardianId || !rawStudentId) return null;
+
+  // Resolve both IDs to actual users table PKs
+  const [guardianId, studentTableId] = await Promise.all([
+    resolveProfileId(rawGuardianId).then(r => r ?? rawGuardianId),
+    resolveProfileId(rawStudentId).then(r => r ?? rawStudentId),
+  ]);
+
+  // Always filter by BOTH guardian_id AND student_id — exactly one row expected
+  const { data, error } = await supabase
+    .from('allowance_configs')
+    .select('*')
+    .eq('guardian_id', guardianId)
+    .eq('student_id', studentTableId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching allowance config:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    amount: parseFloat(data.amount.toString()),
+    frequency: data.frequency as 'daily' | 'weekly' | 'biweekly' | 'monthly',
+    dayOfWeek: data.day_of_week,
+    isActive: data.is_active,
+  };
+}
+
+export async function setAllowanceConfig(config: AllowanceConfig, studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  const rawGuardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  const rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+
+  if (!rawGuardianId || !rawStudentId) return;
+
+  // Resolve auth UUIDs -> actual profile PKs to satisfy FK constraints
+  const [resolvedGuardianId, resolvedStudentId] = await Promise.all([
+    resolveProfileId(rawGuardianId),
+    resolveProfileId(rawStudentId),
+  ]);
+
+  const guardianId = resolvedGuardianId ?? rawGuardianId;
+  const targetStudentId = resolvedStudentId ?? rawStudentId;
+
+  const { error } = await supabase
+    .from('allowance_configs')
+    .upsert({
+      guardian_id: guardianId,
+      student_id: targetStudentId,
+      amount: config.amount,
+      frequency: config.frequency,
+      day_of_week: config.dayOfWeek,
+      is_active: config.isActive,
+    }, {
+      onConflict: 'guardian_id,student_id'
+    });
+
+  if (error) {
+    console.error('Error setting allowance config:', error);
+  }
+}
+
+export async function getTransactions(studentId?: string): Promise<Transaction[]> {
+  const user = await getLoggedInUser();
+  if (!user) return [];
+
+  // For students: only fetch transactions involving THEIR own ID.
+  // Using all linkedUserIds (which includes the guardian) causes the student
+  // to see transactions from ALL of the guardian's other linked students.
+  // For guardians: if a specific studentId is passed, scope to that pair only;
+  // otherwise fetch all transactions involving the guardian and any linked student.
+  let rawIds: string[];
+  if (user.role === 'student') {
+    rawIds = [user.id];
+    // Also include the guardian ID so allowance transfers (from guardian to student) show up
+    if (user.linkedUserIds?.length) rawIds.push(...user.linkedUserIds);
+  } else {
+    rawIds = [user.id, ...(user.linkedUserIds || [])];
+    if (studentId) rawIds.push(studentId);
+  }
+
+  // Resolve each raw ID to its actual profile PK (handles both schema styles)
+  const resolvedSets = await Promise.all(rawIds.map(async (rawId) => {
+    const profileId = await resolveProfileId(rawId);
+    return profileId && profileId !== rawId ? [rawId, profileId] : [rawId];
+  }));
+  const allIds = [...new Set(resolvedSets.flat())];
+
+  // For students: only return transactions where THEY are from_user or to_user.
+  // This prevents leaking other students' transactions that share the same guardian.
+  let studentOwnIds: string[] = [];
+  if (user.role === 'student') {
+    const resolved = await resolveProfileId(user.id);
+    studentOwnIds = resolved && resolved !== user.id ? [user.id, resolved] : [user.id];
+  }
+
+  // Deposits have to_user_id = null, so we must also explicitly include them
+  // by querying: (from_user_id IN allIds) OR (to_user_id IN allIds)
+  // Supabase .in() won't match NULL rows, so we run two queries and merge.
+  const [regularData, depositData] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('*')
+      .or(`from_user_id.in.(${allIds.join(',')}),to_user_id.in.(${allIds.join(',')})`)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('transactions')
+      .select('*')
+      .in('from_user_id', allIds)
+      .eq('type', 'deposit')
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const error = regularData.error || depositData.error;
+  if (error) {
+    console.error('Error fetching transactions:', error);
+    return [];
+  }
+
+  // Merge and deduplicate by id
+  // For students: also filter out transactions that don't involve them directly
+  // (this removes other students' transactions that share the same guardian)
+  const seen = new Set<string>();
+  const merged = [...(regularData.data || []), ...(depositData.data || [])].filter(tx => {
+    if (seen.has(tx.id)) return false;
+    seen.add(tx.id);
+    // Student scope filter: only keep txns where the student is from or to
+    if (user.role === 'student' && studentOwnIds.length > 0) {
+      const involvesStudent =
+        studentOwnIds.includes(tx.from_user_id) ||
+        studentOwnIds.includes(tx.to_user_id);
+      if (!involvesStudent) return false;
+    }
+    return true;
+  });
+  // Re-sort merged results newest first
+  const data = merged.sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return data.map(tx => ({
+    id: tx.id,
+    referenceId: tx.reference_id || `TXN-${tx.id.substring(0, 8).toUpperCase()}`,
+    type: tx.type as 'deposit' | 'allowance' | 'expense',
+    amount: parseFloat(tx.amount.toString()),
+    description: tx.description,
+    category: tx.category || undefined,
+    date: tx.created_at,
+    from: tx.from_user_id
+      ? ((user.linkedUserIds || []).some(lid => allIds.includes(lid) && lid === tx.from_user_id)
+          ? (user.role === 'guardian' ? 'student' : 'guardian')
+          : (user.role === 'guardian' ? 'guardian' : 'student'))
+      : undefined,
+    to: tx.to_user_id
+      ? ((user.linkedUserIds || []).some(lid => allIds.includes(lid) && lid === tx.to_user_id)
+          ? (user.role === 'guardian' ? 'student' : 'guardian')
+          : (user.role === 'guardian' ? 'guardian' : 'student'))
+      : undefined,
+  }));
+}
+
+// FIX #3: accepts Omit<Transaction, 'id' | 'referenceId'> — id and referenceId are auto-generated
+export async function addTransaction(tx: Omit<Transaction, 'id' | 'referenceId'>, studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  const rawGuardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  const rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+
+  // Resolve auth UUIDs → actual users table PKs to satisfy FK constraints on transactions
+  const [resolvedGuardianId, resolvedStudentId] = await Promise.all([
+    rawGuardianId ? resolveProfileId(rawGuardianId) : Promise.resolve(null),
+    rawStudentId ? resolveProfileId(rawStudentId) : Promise.resolve(null),
+  ]);
+
+  const guardianId = resolvedGuardianId ?? rawGuardianId ?? null;
+  const targetStudentId = resolvedStudentId ?? rawStudentId ?? null;
+
+  // For deposits: no recipient — money just goes into the guardian's wallet
+  // Setting to_user_id = null avoids FK mismatches and correctly represents wallet top-ups
+  const fromUserId = tx.from === 'guardian' ? guardianId : tx.from === 'student' ? targetStudentId : null;
+  const toUserId = tx.type === 'deposit' ? null : (tx.to === 'guardian' ? guardianId : tx.to === 'student' ? targetStudentId : null);
+
+  const { error } = await supabase
+    .from('transactions')
+    .insert({
+      type: tx.type,
+      amount: tx.amount,
+      description: tx.description,
+      category: tx.category || null,
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      created_at: tx.date,
+    });
+
+  if (error) {
+    console.error('Error adding transaction:', error);
+    throw new Error(`Failed to record transaction: ${error.message}`);
+  }
+}
+
+export async function getSavingsGoals(studentId?: string): Promise<SavingsGoal[]> {
+  const user = await getLoggedInUser();
+  if (!user) return [];
+
+  let targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!targetStudentId) return [];
+
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .select('*')
+    .eq('student_id', targetStudentId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching savings goals:', error);
+    return [];
+  }
+
+  return (data || []).map(goal => ({
+    id: goal.id,
+    name: goal.name,
+    targetAmount: parseFloat(goal.target_amount.toString()),
+    currentAmount: parseFloat(goal.current_amount.toString()),
+    iconName: goal.icon_name,
+    createdAt: goal.created_at,
+  }));
+}
+
+export async function setSavingsGoals(goals: SavingsGoal[], studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  let targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!targetStudentId) return;
+
+  await supabase
+    .from('savings_goals')
+    .delete()
+    .eq('student_id', targetStudentId);
+
+  if (goals.length > 0) {
+    const { error } = await supabase
+      .from('savings_goals')
+      .insert(goals.map(goal => ({
+        id: goal.id,
+        student_id: targetStudentId!,
+        name: goal.name,
+        target_amount: goal.targetAmount,
+        current_amount: goal.currentAmount,
+        icon_name: goal.iconName,
+        created_at: goal.createdAt,
+      })));
+
+    if (error) {
+      console.error('Error setting savings goals:', error);
+    }
+  }
+}
+
+// FIX: Dedicated insert for a single new goal — avoids the delete+reinsert race condition
+export async function insertSavingsGoal(goal: SavingsGoal, studentId?: string): Promise<boolean> {
+  const user = await getLoggedInUser();
+  if (!user) return false;
+
+  const targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!targetStudentId) return false;
+
+  const { error } = await supabase
+    .from('savings_goals')
+    .insert({
+      id: goal.id,
+      student_id: targetStudentId,
+      name: goal.name,
+      target_amount: goal.targetAmount,
+      current_amount: goal.currentAmount,
+      icon_name: goal.iconName,
+      created_at: goal.createdAt,
+    });
+
+  if (error) {
+    console.error('Error inserting savings goal:', error);
+    return false;
+  }
+  return true;
+}
+
+// FIX: Update only the current_amount of a single goal — avoids the delete+reinsert race condition
+export async function updateGoalAmount(goalId: string, newAmount: number): Promise<boolean> {
+  const { error } = await supabase
+    .from('savings_goals')
+    .update({ current_amount: newAmount })
+    .eq('id', goalId);
+
+  if (error) {
+    console.error('Error updating goal amount:', error);
+    return false;
+  }
+  return true;
+}
+
+// FIX: Delete a single goal by id — avoids the delete+reinsert race condition
+export async function deleteSavingsGoalById(goalId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('savings_goals')
+    .delete()
+    .eq('id', goalId);
+
+  if (error) {
+    console.error('Error deleting savings goal:', error);
+    return false;
+  }
+  return true;
+}
+
+// FIX #8: Changed .single() → .maybeSingle() to prevent PGRST116 crashes
+export async function getSpendingLimit(studentId?: string): Promise<SpendingLimit | null> {
+  const user = await getLoggedInUser();
+  if (!user) return null;
+
+  const rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawStudentId) return null;
+
+  // Resolve actual users table UUID
+  const targetStudentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+
+  const { data, error } = await supabase
+    .from('spending_limits')
+    .select('*')
+    .eq('student_id', targetStudentId)
+    .maybeSingle(); // FIX: was .single() — crashes if no row exists
+
+  if (error) {
+    console.error('Error fetching spending limit:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    dailyLimit: parseFloat(data.daily_limit.toString()),
+    isActive: data.is_active,
+  };
+}
+
+export async function setSpendingLimit(limit: SpendingLimit, studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  let rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawStudentId) return;
+
+  // Resolve auth UUID → actual users table PK (same as getAllowanceConfig / setAllowanceConfig)
+  const resolvedStudentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+
+  const { error } = await supabase
+    .from('spending_limits')
+    .upsert({
+      student_id: resolvedStudentId,
+      daily_limit: limit.dailyLimit,
+      is_active: limit.isActive,
+    }, {
+      onConflict: 'student_id'
+    });
+
+  if (error) {
+    console.error('Error setting spending limit:', error);
+  }
+}
+
+export function getTodaySpent(transactions: Transaction[]): number {
+  const today = new Date().toISOString().split('T')[0];
+  return transactions
+    .filter(t => t.type === 'expense' && t.date.startsWith(today))
+    .reduce((sum, t) => sum + t.amount, 0);
+}
+
+export function getWeeklySpentByCategory(transactions: Transaction[]): Record<string, number> {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const result: Record<string, number> = {};
+  transactions
+    .filter(t => t.type === 'expense' && new Date(t.date) >= weekAgo && t.category !== 'savings')
+    .forEach(t => {
+      const cat = t.category || 'other';
+      result[cat] = (result[cat] || 0) + t.amount;
+    });
+  return result;
+}
+
+export async function getLastAllowanceDate(studentId?: string): Promise<string | null> {
+  const user = await getLoggedInUser();
+  if (!user) return null;
+
+  let guardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  let targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!guardianId || !targetStudentId) return null;
+
+  const { data } = await supabase
+    .from('allowance_configs')
+    .select('last_allowance_date')
+    .eq('guardian_id', guardianId)
+    .eq('student_id', targetStudentId)
+    .maybeSingle();
+
+  return data?.last_allowance_date || null;
+}
+
+export async function setLastAllowanceDate(date: string, studentId?: string): Promise<void> {
+  const user = await getLoggedInUser();
+  if (!user) return;
+
+  let guardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  let targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!guardianId || !targetStudentId) return;
+
+  await supabase
+    .from('allowance_configs')
+    .update({ last_allowance_date: date })
+    .eq('guardian_id', guardianId)
+    .eq('student_id', targetStudentId);
+}
+
+export async function processAllowance(studentId?: string): Promise<boolean> {
+  const config = await getAllowanceConfig();
+  if (!config || !config.isActive) return false;
+
+  const lastDate = await getLastAllowanceDate(studentId);
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  if (lastDate === today) return false;
+
+  let shouldSend = false;
+  if (!lastDate) {
+    shouldSend = true;
+  } else {
+    const last = new Date(lastDate);
+    const diffDays = Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+
+    switch (config.frequency) {
+      case 'daily': shouldSend = diffDays >= 1; break;
+      case 'weekly': shouldSend = diffDays >= 7; break;
+      case 'biweekly': shouldSend = diffDays >= 14; break;
+      case 'monthly': shouldSend = diffDays >= 30; break;
+    }
+  }
+
+  if (!shouldSend) return false;
+
+  const guardianBalance = await getGuardianWallet();
+  if (guardianBalance < config.amount) return false;
+
+  await setGuardianWallet(guardianBalance - config.amount);
+  const studentBalance = await getStudentWallet(studentId);
+  await setStudentWallet(studentBalance + config.amount, studentId);
+
+  await addTransaction({
+    type: 'allowance',
+    amount: config.amount,
+    description: `${config.frequency.charAt(0).toUpperCase() + config.frequency.slice(1)} allowance`,
+    date: now.toISOString(),
+    from: 'guardian',
+    to: 'student',
+  }, studentId);
+
+  await setLastAllowanceDate(today, studentId);
+  return true;
+}
+
+export async function clearAllData(): Promise<void> {
+  const keys = Object.values(KEYS);
+  await AsyncStorage.multiRemove(keys);
+}
+
+export function generateId(): string {
+  // Generate a proper UUID v4 compatible with Supabase
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
