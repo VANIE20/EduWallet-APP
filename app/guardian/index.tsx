@@ -10,6 +10,7 @@ import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
 import BottomNav from '../../components/BottomNav';
+import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
 
 function formatCurrency(amount: number): string {
   return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -37,6 +38,7 @@ export default function GuardianDashboard() {
   } = useApp();
   const [localDisplayName, setLocalDisplayName] = useState<string>('');
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     refreshData();
@@ -46,6 +48,7 @@ export default function GuardianDashboard() {
         if (!loggedInUser) setLoggedInUser(u);
       }
     });
+    shouldShowOnboarding().then(show => setShowOnboarding(show));
   }, [refreshData]);
 
   const guardianTransactions = transactions.filter(
@@ -321,6 +324,13 @@ export default function GuardianDashboard() {
         userType="guardian"
         onLogout={handleLogout}
       />
+
+      {showOnboarding && (
+        <OnboardingTutorial
+          role="guardian"
+          onComplete={() => setShowOnboarding(false)}
+        />
+      )}
     </View>
   );
 }

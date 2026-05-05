@@ -23,7 +23,7 @@ type Section = 'main' | 'editName' | 'editEmail' | 'editPhone' | 'editPin';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { loggedInUser, setLoggedInUser: setContextUser, logoutUser } = useApp();
+  const { loggedInUser, setLoggedInUser: setContextUser, logoutUser, isLinked } = useApp();
 
   const [section, setSection] = useState<Section>('main');
   const [displayName, setDisplayName] = useState('');
@@ -342,8 +342,8 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.rowContent}>
             <Text style={styles.rowLabel}>Status</Text>
-            <Text style={[styles.rowValue, { color: loggedInUser?.isLinked ? '#10B981' : Colors.textTertiary }]}>
-              {loggedInUser?.isLinked ? 'Linked' : 'Not linked'}
+            <Text style={[styles.rowValue, { color: isLinked ? '#10B981' : Colors.textTertiary }]}>
+              {isLinked ? 'Linked' : 'Not linked'}
             </Text>
           </View>
         </View>
