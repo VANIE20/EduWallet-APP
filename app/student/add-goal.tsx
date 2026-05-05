@@ -64,17 +64,15 @@ export default function AddGoalScreen() {
       >
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Goal Name</Text>
-          // Find this TextInput:
           <TextInput
-            style={styles.amountInput}
-            value={target}
-            onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, ''))}
-            placeholder="0.00"
+            style={styles.textInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g., New Headphones"
             placeholderTextColor={Colors.textTertiary}
-            keyboardType="decimal-pad"
-            // ADD THIS:
-            maxLength={10}
-          />        </View>
+            maxLength={50}
+          />
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Target Amount</Text>

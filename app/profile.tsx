@@ -23,7 +23,7 @@ type Section = 'main' | 'editName' | 'editEmail' | 'editPhone' | 'editPin';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { loggedInUser, setLoggedInUser: setContextUser } = useApp();
+  const { loggedInUser, setLoggedInUser: setContextUser, logoutUser } = useApp();
 
   const [section, setSection] = useState<Section>('main');
   const [displayName, setDisplayName] = useState('');
@@ -175,15 +175,13 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            try {
-              await supabase.auth.signOut();
-              await setLoggedInUser(null);
-              setContextUser(null);
-              router.replace('/login');
-            } catch (e: any) {
-              showError(e.message || 'Failed to sign out.');
-            }
-          },
+              try {
+                await logoutUser();
+                router.replace('/login');
+              } catch (e: any) {
+                showError(e.message || 'Failed to sign out.');
+              }
+            },
         },
       ]
     );

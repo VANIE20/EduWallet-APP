@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import type { SavingsGoal } from '../../lib/storage';

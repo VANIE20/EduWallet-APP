@@ -209,7 +209,7 @@ export default function ExpenseScreen() {
 
         {/* Amount input */}
         <View style={styles.amountSection}>
-          <Text style={[styles.currencySign, parsedAmount > 0 && styles.currencySignActive]}>\u20b1</Text>
+          <Text style={[styles.currencySign, parsedAmount > 0 && styles.currencySignActive]}></Text>
           <TextInput
             style={[styles.amountInput, parsedAmount > 0 && styles.amountInputActive]}
             value={amount}

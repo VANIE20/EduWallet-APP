@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import type { SavingsGoal } from '../../lib/storage';
@@ -111,7 +110,7 @@ export default function GoalsScreen() {
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Savings Goals</Text>
-        <Pressable onPress={() => { tap(); router.push('/student/add-goal'); }} style={styles.addBtn}>
+        <Pressable onPress={() => { tap(); router.push('/guardian/add-goal'); }} style={styles.addBtn}>
           <Ionicons name="add" size={24} color="#9B1C1C" />
         </Pressable>
       </View>
@@ -135,7 +134,7 @@ export default function GoalsScreen() {
             <Text style={styles.emptyText}>No savings goals yet</Text>
             <Text style={styles.emptySubtext}>Set a goal and start saving toward it</Text>
             <Pressable
-              onPress={() => router.push('/student/add-goal')}
+              onPress={() => router.push('/guardian/add-goal')}
               style={({ pressed }) => [styles.createBtn, pressed && { opacity: 0.8 }]}
             >
               <Ionicons name="add" size={20} color={Colors.white} />

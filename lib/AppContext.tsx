@@ -21,7 +21,7 @@ interface AppContextValue {
   linkedStudents: LoggedInUser[];
   selectedStudentId: string | null;
   selectStudent: (studentId: string) => void;
-  setLoggedInUser: (user: LoggedInUser) => void;
+  setLoggedInUser: (user: LoggedInUser | null) => void;
   logoutUser: () => Promise<void>;
   setUserRole: (role: UserRole) => Promise<void>;
   depositToGuardian: (amount: number, description?: string) => Promise<void>;
@@ -119,6 +119,13 @@ function AppProviderInner({ children }: { children: ReactNode }) {
           setRole(freshUser.role);
           setIsLinked(freshUser.isLinked || (freshUser.linkedUserIds?.length ?? 0) > 0);
 
+          // Check if OTP re-verification is required (session timeout)
+          const otpRequired = await shouldRequireOTP();
+          setNeedsOTP(otpRequired);
+          if (!otpRequired) {
+            await updateLastActive();
+          }
+
           if (freshUser.role === 'guardian') {
             const students = await Storage.getLinkedStudents();
             setLinkedStudents(students);
@@ -141,6 +148,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
           setLoggedInUserState(null);
           setRole(null);
           setIsLinked(false);
+          setNeedsOTP(false);
         }
         setIsLoading(false);
       }
