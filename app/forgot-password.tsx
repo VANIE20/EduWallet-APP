@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,39 +7,101 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Colors from '../constants/colors';
-import { resetPassword } from '../lib/storage';
+import { supabase } from '../lib/supabase';
+
+type Step = 'enterEmail' | 'enterOtp' | 'success';
 
 export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
+
+  const [step, setStep] = useState<Step>('enterEmail');
   const [email, setEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleReset = async () => {
-    if (!email.trim()) {
-      setError('Please enter your email');
-      return;
-    }
+  const tap = () => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
 
-    if (!email.includes('@')) {
-      setError('Please enter a valid email');
-      return;
-    }
+  // ── Step 1: Send OTP to email ─────────────────────────────────────────────
+  const handleSendOtp = async () => {
+    if (!email.trim()) return setError('Please enter your email.');
+    if (!email.includes('@')) return setError('Please enter a valid email.');
 
     setError('');
     setIsSubmitting(true);
-    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    tap();
 
-    const result = await resetPassword(email.trim());
-    setIsSubmitting(false);
+    try {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: false },
+      });
+      if (otpError) throw otpError;
 
-    if (result.success) {
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSuccess(true);
-    } else {
+      setStep('enterOtp');
+    } catch (e: any) {
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Failed to send reset email');
+      setError(e.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Step 2: Verify OTP + set new PIN ─────────────────────────────────────
+  const handleVerifyAndReset = async () => {
+    if (!otpCode.trim() || otpCode.length < 4) return setError('Please enter the OTP sent to your email.');
+    if (!newPin) return setError('Please enter a new PIN.');
+    if (!/^\d{6}$/.test(newPin)) return setError('PIN must be exactly 6 digits.');
+    if (newPin !== confirmPin) return setError('PINs do not match.');
+
+    setError('');
+    setIsSubmitting(true);
+    tap();
+
+    try {
+      // Verify OTP
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otpCode.trim(),
+        type: 'email',
+      });
+      if (verifyError) throw new Error('Invalid or expired OTP. Please try again.');
+
+      // Set new PIN as password
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPin });
+      if (updateError) throw updateError;
+
+      // Flag PIN auth in metadata
+      await supabase.auth.updateUser({ data: { uses_pin: true } });
+
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setStep('success');
+    } catch (e: any) {
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(e.message || 'Failed to reset PIN. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setOtpCode('');
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: false },
+      });
+      if (otpError) throw otpError;
+      Alert.alert('OTP Resent', `A new code was sent to ${email}.`);
+    } catch (e: any) {
+      setError(e.message || 'Failed to resend OTP.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -74,37 +136,24 @@ export default function ForgotPasswordScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.white} />
           </Pressable>
           <View style={styles.logoContainer}>
-            <Ionicons name="key" size={40} color={Colors.white} />
+            <Ionicons name="keypad" size={40} color={Colors.white} />
           </View>
-          <Text style={styles.title}>Reset Password</Text>
-          <Text style={styles.subtitle}>We'll send you a reset link</Text>
+          <Text style={styles.title}>Forgot PIN</Text>
+          <Text style={styles.subtitle}>
+            {step === 'enterEmail' && "We'll send a code to your email"}
+            {step === 'enterOtp' && 'Enter the code we sent you'}
+            {step === 'success' && 'PIN reset successfully!'}
+          </Text>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(400).duration(600)} style={styles.formCard}>
-          {success ? (
-            <View style={styles.successContainer}>
-              <View style={styles.successIcon}>
-                <Ionicons name="checkmark-circle" size={64} color={Colors.success} />
-              </View>
-              <Text style={styles.successTitle}>Check Your Email!</Text>
-              <Text style={styles.successText}>
-                We've sent a password reset link to {email}
-              </Text>
-              <Text style={styles.successHint}>
-                Click the link in the email to reset your password.
-              </Text>
-              <Pressable
-                onPress={() => router.back()}
-                style={styles.backToLoginBtn}
-              >
-                <Text style={styles.backToLoginText}>Back to Sign In</Text>
-              </Pressable>
-            </View>
-          ) : (
+
+          {/* ── Step 1: Enter Email ── */}
+          {step === 'enterEmail' && (
             <>
-              <Text style={styles.formTitle}>Forgot your password?</Text>
+              <Text style={styles.formTitle}>Reset your PIN</Text>
               <Text style={styles.formSubtitle}>
-                Enter your email address and we'll send you a link to reset your password.
+                Enter your account email and we'll send you a one-time code to reset your PIN.
               </Text>
 
               <View style={styles.inputGroup}>
@@ -119,6 +168,7 @@ export default function ForgotPasswordScreen() {
                     placeholderTextColor={Colors.textTertiary}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    autoFocus
                   />
                 </View>
               </View>
@@ -131,20 +181,16 @@ export default function ForgotPasswordScreen() {
               ) : null}
 
               <Pressable
-                onPress={handleReset}
+                onPress={handleSendOtp}
                 disabled={isSubmitting}
-                style={({ pressed }) => [
-                  styles.resetBtn,
-                  pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-                  isSubmitting && { opacity: 0.6 },
-                ]}
+                style={[styles.primaryBtn, isSubmitting && { opacity: 0.6 }]}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color={Colors.white} size="small" />
                 ) : (
                   <>
-                    <Ionicons name="mail" size={22} color={Colors.white} />
-                    <Text style={styles.resetBtnText}>Send Reset Link</Text>
+                    <Ionicons name="mail" size={20} color={Colors.white} />
+                    <Text style={styles.primaryBtnText}>Send OTP Code</Text>
                   </>
                 )}
               </Pressable>
@@ -155,6 +201,122 @@ export default function ForgotPasswordScreen() {
               </Pressable>
             </>
           )}
+
+          {/* ── Step 2: Enter OTP + New PIN ── */}
+          {step === 'enterOtp' && (
+            <>
+              <Text style={styles.formTitle}>Enter OTP & New PIN</Text>
+              <Text style={styles.formSubtitle}>
+                We sent a verification code to{' '}
+                <Text style={{ fontFamily: 'DMSans_600SemiBold', color: Colors.text }}>{email}</Text>.
+                Enter it below along with your new 6-digit PIN.
+              </Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Verification Code (OTP)</Text>
+                <View style={styles.inputRow}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={Colors.textTertiary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    value={otpCode}
+                    onChangeText={(t) => { setOtpCode(t); setError(''); }}
+                    placeholder="Enter OTP"
+                    placeholderTextColor={Colors.textTertiary}
+                    keyboardType="number-pad"
+                    autoFocus
+                    maxLength={8}
+                  />
+                </View>
+              </View>
+
+              <Pressable onPress={handleResendOtp} disabled={isSubmitting} style={styles.resendRow}>
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#9B1C1C" />
+                ) : (
+                  <Text style={styles.resendText}>Resend OTP</Text>
+                )}
+              </Pressable>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>New PIN (6 digits)</Text>
+                <View style={styles.inputRow}>
+                  <Ionicons name="keypad-outline" size={20} color={Colors.textTertiary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    value={newPin}
+                    onChangeText={(v) => { setNewPin(v.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                    placeholder="••••"
+                    placeholderTextColor={Colors.textTertiary}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm New PIN</Text>
+                <View style={styles.inputRow}>
+                  <Ionicons name="keypad-outline" size={20} color={Colors.textTertiary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    value={confirmPin}
+                    onChangeText={(v) => { setConfirmPin(v.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                    placeholder="••••"
+                    placeholderTextColor={Colors.textTertiary}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                  />
+                </View>
+              </View>
+
+              {error ? (
+                <Animated.View entering={FadeInDown.duration(300)} style={styles.errorRow}>
+                  <Ionicons name="alert-circle" size={16} color={Colors.danger} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </Animated.View>
+              ) : null}
+
+              <Pressable
+                onPress={handleVerifyAndReset}
+                disabled={isSubmitting}
+                style={[styles.primaryBtn, isSubmitting && { opacity: 0.6 }]}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={Colors.white} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                    <Text style={styles.primaryBtnText}>Verify & Reset PIN</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable onPress={() => { setStep('enterEmail'); setError(''); }} style={styles.backLink}>
+                <Ionicons name="arrow-back" size={16} color={Colors.textTertiary} />
+                <Text style={styles.backText}>Use a different email</Text>
+              </Pressable>
+            </>
+          )}
+
+          {/* ── Step 3: Success ── */}
+          {step === 'success' && (
+            <View style={styles.successContainer}>
+              <View style={styles.successIcon}>
+                <Ionicons name="checkmark-circle" size={64} color={Colors.success} />
+              </View>
+              <Text style={styles.successTitle}>PIN Reset!</Text>
+              <Text style={styles.successText}>
+                Your PIN has been updated successfully. You can now sign in with your new PIN.
+              </Text>
+              <Pressable onPress={() => router.replace('/login')} style={styles.primaryBtn}>
+                <Ionicons name="log-in-outline" size={20} color={Colors.white} />
+                <Text style={styles.primaryBtnText}>Back to Sign In</Text>
+              </Pressable>
+            </View>
+          )}
+
         </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -222,6 +384,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'DMSans_400Regular',
     color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
   },
   formCard: {
     backgroundColor: Colors.white,
@@ -248,7 +411,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
@@ -292,16 +455,17 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_500Medium',
     color: Colors.danger,
   },
-  resetBtn: {
-    backgroundColor: Colors.primary,
+  primaryBtn: {
+    backgroundColor: '#9B1C1C',
     borderRadius: 16,
     paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    marginTop: 8,
   },
-  resetBtnText: {
+  primaryBtnText: {
     fontSize: 17,
     fontFamily: 'DMSans_700Bold',
     color: Colors.white,
@@ -317,6 +481,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'DMSans_500Medium',
     color: Colors.textTertiary,
+  },
+  resendRow: {
+    alignItems: 'flex-end',
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  resendText: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#9B1C1C',
   },
   successContainer: {
     alignItems: 'center',
@@ -336,25 +510,7 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_400Regular',
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  successHint: {
-    fontSize: 13,
-    fontFamily: 'DMSans_400Regular',
-    color: Colors.textTertiary,
-    textAlign: 'center',
     marginBottom: 24,
-  },
-  backToLoginBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-  },
-  backToLoginText: {
-    fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
-    color: Colors.white,
+    lineHeight: 22,
   },
 });
