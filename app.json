@@ -3,6 +3,7 @@
     "name": "EduWallet-APP",
     "slug": "EduWallet-APP",
     "scheme": "eduwallet",
+    "platforms": ["ios", "android"],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -38,6 +39,12 @@
       "eas": {
         "projectId": "1c699995-9f97-40ca-9a39-923a0664d727"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1c699995-9f97-40ca-9a39-923a0664d727"
     }
   }
 }
