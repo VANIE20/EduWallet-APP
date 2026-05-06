@@ -22,7 +22,7 @@ function formatFullDate(dateStr: string): string {
   });
 }
 
-function TransactionItem({ item }: { item: Transaction }) {
+function TransactionItem({ item, studentName }: { item: Transaction; studentName?: string }) {
   const isDeposit = item.type === 'deposit';
   const isAllowance = item.type === 'allowance';
 
@@ -44,7 +44,9 @@ function TransactionItem({ item }: { item: Transaction }) {
         <Text style={styles.txRef}>{item.referenceId}</Text>
         {isAllowance && (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>Sent to student</Text>
+            <Text style={styles.badgeText}>
+              Sent to {studentName || 'student'}
+            </Text>
           </View>
         )}
       </View>
@@ -57,8 +59,14 @@ function TransactionItem({ item }: { item: Transaction }) {
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { transactions, refreshData } = useApp();
+  const { transactions, refreshData, linkedStudents } = useApp();
   const [refreshing, setRefreshing] = React.useState(false);
+
+  // Build a map of studentId -> displayName for quick lookup
+  const studentNameMap: Record<string, string> = {};
+  linkedStudents?.forEach(s => {
+    studentNameMap[s.id] = s.displayName;
+  });
 
   // Show deposits (money added to guardian wallet) and allowances (sent to student)
   // Sort newest first
@@ -96,7 +104,18 @@ export default function HistoryScreen() {
       <FlatList
         data={guardianTx}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <TransactionItem item={item} />}
+        renderItem={({ item }) => (
+          <TransactionItem
+            item={item}
+            studentName={
+              item.type === 'allowance' && item.toUserId
+                ? studentNameMap[item.toUserId] ?? linkedStudents?.find(s => s.id === item.toUserId)?.displayName
+                : item.type === 'allowance'
+                ? linkedStudents?.[0]?.displayName
+                : undefined
+            }
+          />
+        )}
         contentContainerStyle={[
           styles.list,
           { paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 16 },

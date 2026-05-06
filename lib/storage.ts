@@ -30,6 +30,8 @@ export interface Transaction {
   date: string;
   from?: 'guardian' | 'student';
   to?: 'guardian' | 'student';
+  toUserId?: string;
+  fromUserId?: string;
 }
 
 export interface SavingsGoal {
@@ -1391,6 +1393,8 @@ export async function getTransactions(studentId?: string): Promise<Transaction[]
           ? (user.role === 'guardian' ? 'student' : 'guardian')
           : (user.role === 'guardian' ? 'guardian' : 'student'))
       : undefined,
+    toUserId: tx.to_user_id ?? undefined,
+    fromUserId: tx.from_user_id ?? undefined,
   }));
 }
 
