@@ -107,12 +107,40 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // Immediately clear state on sign out — don't wait for async
+        if (event === 'SIGNED_OUT') {
+          await Storage.setLoggedInUser(null);
+          setLoggedInUserState(null);
+          setRole(null);
+          setIsLinked(false);
+          setLinkedStudents([]);
+          setSelectedStudentId(null);
+          selectedStudentIdRef.current = null;
+          setNeedsOTP(false);
+          setIsLoading(false);
+          return;
+        }
+
         const hasValidSession = !!session?.user;
         if (hasValidSession || event !== 'INITIAL_SESSION') {
           console.log('[AppContext] onAuthStateChange:', event, 'hasValidSession:', hasValidSession);
         }
 
-        const user = await Storage.getLoggedInUser();
+        let user = await Storage.getLoggedInUser();
+        console.log('[AppContext] getLoggedInUser result:', user ? `id=${user.id} role=${user.role} isLinked=${user.isLinked}` : 'NULL');
+
+        // AsyncStorage is empty but Supabase restored a valid session (e.g. Android
+        // keychain restore after AsyncStorage was cleared). Rebuild the user from the
+        // session so the app doesn't treat them as logged-out.
+        if (!user && hasValidSession && session?.user) {
+          console.log('[AppContext] AsyncStorage empty but session valid — rebuilding user from session');
+          const rebuilt = await Storage.signInFromSession(session.user);
+          if (rebuilt) {
+            user = rebuilt;
+            console.log('[AppContext] rebuilt user:', user.id, 'role:', user.role);
+          }
+        }
+
         if (user && hasValidSession) {
           const freshUser = await Storage.refreshUserLinkStatus(user);
           setLoggedInUserState(freshUser);
@@ -155,14 +183,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     );
     return () => { subscription.unsubscribe(); };
   }, []); // Empty deps — uses ref, never stale
-
-  useEffect(() => {
-    if (loggedInUser) {
-      setIsLinked(loggedInUser.isLinked || (loggedInUser.linkedUserIds?.length ?? 0) > 0);
-    } else {
-      setIsLinked(false);
-    }
-  }, [loggedInUser]);
 
   useEffect(() => {
     if (loggedInUser?.role === 'guardian') {
@@ -349,7 +369,13 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     linkedStudents,
     selectedStudentId,
     selectStudent,
-    setLoggedInUser: setLoggedInUserState,
+    setLoggedInUser: (user: LoggedInUser | null) => {
+      setLoggedInUserState(user);
+      // Sync derived state so callers (e.g. pending-invites) don't have to
+      // manually call setIsLinked after updating the user object.
+      setIsLinked(!!user && (user.isLinked || (user.linkedUserIds?.length ?? 0) > 0));
+      if (user?.role) setRole(user.role);
+    },
     logoutUser,
     setUserRole,
     depositToGuardian,

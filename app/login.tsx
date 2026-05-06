@@ -54,13 +54,22 @@ export default function LoginScreen() {
 
       await markDeviceVerified();
 
-      // Query Supabase directly to get the freshest link status
+      // Query Supabase using the correct users-table UUID (not auth UUID)
+      // user_links stores users.id (table row UUID), not auth.users.id
       const { supabase } = await import('../lib/supabase');
-      const userId = result.user!.id;
+      const authUserId = result.user!.id;
+
+      // Try to find the users-table row UUID (may differ from auth UUID)
+      const [byId, byAuthId] = await Promise.all([
+        supabase.from('users').select('id').eq('id', authUserId).maybeSingle(),
+        supabase.from('users').select('id').eq('auth_user_id', authUserId).maybeSingle(),
+      ]);
+      const tableId = byId.data?.id ?? byAuthId.data?.id ?? authUserId;
+
       const { data: linkData, error: linkError } = await supabase
         .from('user_links')
         .select('id')
-        .or(`guardian_id.eq.${userId},student_id.eq.${userId}`)
+        .or(`guardian_id.eq.${tableId},student_id.eq.${tableId}`)
         .limit(1);
 
       const actuallyLinked = !linkError && Array.isArray(linkData) && linkData.length > 0;

@@ -464,18 +464,27 @@ export async function signInWithPin(
     // that RLS policies (which check auth.uid()) align correctly.
     const effectiveId = profileFoundViaAuthUserId ? authData.user.id : userProfile.id;
 
+    // Query with both the auth UUID and profile table UUID so we find the link
+    // regardless of which ID was stored when the link was created.
+    const candidateIds = Array.from(
+      new Set([authData.user.id, userProfile.id].filter(Boolean) as string[])
+    );
+    const orFilter = candidateIds
+      .flatMap(id => [`guardian_id.eq.${id}`, `student_id.eq.${id}`])
+      .join(',');
+
     const { data: links } = await supabase
       .from('user_links')
       .select('guardian_id, student_id')
-      .or(`guardian_id.eq.${effectiveId},student_id.eq.${effectiveId}`);
+      .or(orFilter);
 
     const linkedUserIds: string[] = [];
     links?.forEach(link => {
-      if (link.guardian_id === effectiveId && link.student_id) {
-        linkedUserIds.push(link.student_id);
+      if (candidateIds.includes(link.guardian_id) && link.student_id) {
+        if (!linkedUserIds.includes(link.student_id)) linkedUserIds.push(link.student_id);
       }
-      if (link.student_id === effectiveId && link.guardian_id) {
-        linkedUserIds.push(link.guardian_id);
+      if (candidateIds.includes(link.student_id) && link.guardian_id) {
+        if (!linkedUserIds.includes(link.guardian_id)) linkedUserIds.push(link.guardian_id);
       }
     });
 
@@ -499,6 +508,87 @@ export async function signInWithPin(
 // Alias for backward compatibility
 export const signUpWithOTP = signUpWithPinAndOTP;
 export const signIn = signInWithPin;
+
+/**
+ * Rebuild a LoggedInUser from an existing Supabase session user object.
+ * Called when AsyncStorage is empty but Supabase has restored a valid auth
+ * session (common on Android after AsyncStorage is cleared). Saves the result
+ * to AsyncStorage so subsequent app opens don't need to repeat this.
+ */
+export async function signInFromSession(
+  sessionUser: { id: string; email?: string; user_metadata?: any }
+): Promise<LoggedInUser | null> {
+  try {
+    console.log('[signInFromSession] rebuilding from session, auth id:', sessionUser.id);
+
+    // Try both schema styles
+    let profileFoundViaAuthUserId = false;
+    let { data: profile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', sessionUser.id)
+      .maybeSingle();
+
+    if (!profile) {
+      const { data: profileByAuthId } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', sessionUser.id)
+        .maybeSingle();
+      if (profileByAuthId) {
+        profile = profileByAuthId;
+        profileFoundViaAuthUserId = true;
+      }
+    }
+
+    console.log('[signInFromSession] profile found:', profile ? `id=${profile.id} role=${profile.role}` : 'NULL', 'viaAuthUserId:', profileFoundViaAuthUserId);
+
+    if (!profile) {
+      // No profile row — can't rebuild
+      console.warn('[signInFromSession] no profile row found, cannot rebuild');
+      return null;
+    }
+
+    const effectiveId = profileFoundViaAuthUserId ? sessionUser.id : profile.id;
+
+    // Resolve link status using both candidate IDs
+    const candidateIds = Array.from(new Set([sessionUser.id, profile.id].filter(Boolean) as string[]));
+    const orFilter = candidateIds.flatMap(id => [`guardian_id.eq.${id}`, `student_id.eq.${id}`]).join(',');
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(orFilter);
+
+    console.log('[signInFromSession] candidateIds:', candidateIds, 'links found:', JSON.stringify(links));
+
+    const linkedUserIds: string[] = [];
+    links?.forEach(link => {
+      if (candidateIds.includes(link.guardian_id) && link.student_id) {
+        if (!linkedUserIds.includes(link.student_id)) linkedUserIds.push(link.student_id);
+      }
+      if (candidateIds.includes(link.student_id) && link.guardian_id) {
+        if (!linkedUserIds.includes(link.guardian_id)) linkedUserIds.push(link.guardian_id);
+      }
+    });
+
+    const user: LoggedInUser = {
+      id: effectiveId,
+      email: profile.email || sessionUser.email || '',
+      displayName: profile.display_name || sessionUser.user_metadata?.display_name || 'User',
+      phoneNumber: profile.phone_number || sessionUser.user_metadata?.phone || undefined,
+      role: (profile.role || sessionUser.user_metadata?.role || 'student') as UserRole,
+      linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+
+    await setLoggedInUser(user);
+    console.log('[signInFromSession] saved user to AsyncStorage, isLinked:', user.isLinked);
+    return user;
+  } catch (err: any) {
+    console.error('[signInFromSession] error:', err.message);
+    return null;
+  }
+}
 
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
@@ -670,42 +760,98 @@ export async function acceptInvite(inviteId: string): Promise<{ success: boolean
       return { success: false, error: 'Invite not found' };
     }
 
-    // Resolve the actual users table UUID for the student.
-    // user.id from AsyncStorage may be the auth UUID; user_links.student_id
-    // is a FK to users.id (the table's own row UUID), which can differ.
-    const [profileById, profileByAuthId] = await Promise.all([
-      supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
-      supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
-    ]);
-    const studentTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+    console.log('[acceptInvite] === DIAGNOSTIC START ===');
+    console.log('[acceptInvite] user.id (from AsyncStorage):', user.id);
+    console.log('[acceptInvite] invite.guardian_id:', invite.guardian_id);
+    console.log('[acceptInvite] invite.student_id:', invite.student_id);
 
-    // Use SECURITY DEFINER RPC to bypass RLS policy restrictions on user_links
-    const { error: linkError } = await supabase
+    // Resolve the actual users table UUID for the student.
+    const [profileById, profileByAuthId] = await Promise.all([
+      supabase.from('users').select('id, auth_user_id').eq('id', user.id).maybeSingle(),
+      supabase.from('users').select('id, auth_user_id').eq('auth_user_id', user.id).maybeSingle(),
+    ]);
+    console.log('[acceptInvite] profileById.data:', JSON.stringify(profileById.data));
+    console.log('[acceptInvite] profileByAuthId.data:', JSON.stringify(profileByAuthId.data));
+
+    const studentTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+    console.log('[acceptInvite] studentTableId resolved to:', studentTableId);
+
+    // Dump what's currently in user_links before insert
+    const { data: existingLinks } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${invite.guardian_id},student_id.eq.${studentTableId},student_id.eq.${user.id}`);
+    console.log('[acceptInvite] existing user_links rows before insert:', JSON.stringify(existingLinks));
+
+    // Try RPC first (SECURITY DEFINER bypasses RLS)
+    const { data: rpcData, error: rpcError } = await supabase
       .rpc('insert_user_link', {
         p_guardian_id: invite.guardian_id,
         p_student_id: studentTableId,
       });
+    console.log('[acceptInvite] RPC result — data:', JSON.stringify(rpcData), 'error:', rpcError?.message ?? 'none');
 
-    if (linkError) {
-      return { success: false, error: linkError.message };
+    if (rpcError) {
+      console.warn('[acceptInvite] RPC failed, trying direct insert:', rpcError.message);
+
+      // Fallback: direct insert WITHOUT status column (user_links only has guardian_id + student_id)
+      const { data: directData, error: directError } = await supabase
+        .from('user_links')
+        .upsert(
+          { guardian_id: invite.guardian_id, student_id: studentTableId },
+          { onConflict: 'guardian_id,student_id', ignoreDuplicates: true }
+        )
+        .select();
+      console.log('[acceptInvite] direct insert result — data:', JSON.stringify(directData), 'error:', directError?.message ?? 'none');
+
+      if (directError) {
+        if (!directError.message?.includes('duplicate') && !directError.code?.includes('23505')) {
+          console.error('[acceptInvite] Direct insert also failed:', directError.message);
+          return { success: false, error: directError.message };
+        }
+      }
     }
 
+    // Mark invite as accepted
     await supabase
       .from('pending_invites')
       .update({ status: 'accepted' })
       .eq('id', inviteId);
 
-    // Use studentTableId for the link refresh query
+    // Dump ALL rows in user_links after insert to see exactly what was stored
+    const { data: allLinks } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id');
+    console.log('[acceptInvite] ALL user_links rows after insert:', JSON.stringify(allLinks));
+
+    // Query with ALL possible student UUIDs
+    const candidateStudentIds = Array.from(
+      new Set([user.id, studentTableId].filter(Boolean) as string[])
+    );
+    const orFilter = candidateStudentIds
+      .flatMap(id => [`guardian_id.eq.${id}`, `student_id.eq.${id}`])
+      .join(',');
+    console.log('[acceptInvite] candidateStudentIds:', candidateStudentIds);
+    console.log('[acceptInvite] orFilter for link query:', orFilter);
+
     const { data: links } = await supabase
       .from('user_links')
       .select('guardian_id, student_id')
-      .or(`guardian_id.eq.${studentTableId},student_id.eq.${studentTableId}`);
+      .or(orFilter);
+    console.log('[acceptInvite] links found by orFilter:', JSON.stringify(links));
 
     const linkedUserIds: string[] = [];
     links?.forEach(link => {
-      if (link.guardian_id === studentTableId && link.student_id) linkedUserIds.push(link.student_id);
-      if (link.student_id === studentTableId && link.guardian_id) linkedUserIds.push(link.guardian_id);
+      if (candidateStudentIds.includes(link.guardian_id) && link.student_id) {
+        if (!linkedUserIds.includes(link.student_id)) linkedUserIds.push(link.student_id);
+      }
+      if (candidateStudentIds.includes(link.student_id) && link.guardian_id) {
+        if (!linkedUserIds.includes(link.guardian_id)) linkedUserIds.push(link.guardian_id);
+      }
     });
+    console.log('[acceptInvite] final linkedUserIds:', linkedUserIds);
+    console.log('[acceptInvite] isLinked will be:', linkedUserIds.length > 0);
+    console.log('[acceptInvite] === DIAGNOSTIC END ===');
 
     const updatedUser: LoggedInUser = {
       ...user,
@@ -716,6 +862,7 @@ export async function acceptInvite(inviteId: string): Promise<{ success: boolean
 
     return { success: true };
   } catch (error: any) {
+    console.error('[acceptInvite] EXCEPTION:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -737,17 +884,22 @@ export async function getLinkedStudents(): Promise<LoggedInUser[]> {
   const user = await getLoggedInUser();
   if (!user || user.role !== 'guardian') return [];
 
-  // Resolve the actual users table UUID — user.id from AsyncStorage may be
-  // the auth UUID which differs from guardian_id in user_links (table row UUID).
+  // Build all possible guardian IDs — the row may have been inserted with
+  // either the auth UUID or the profile table UUID, so query with both.
   const [profileById, profileByAuthId] = await Promise.all([
     supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
     supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
   ]);
-  const guardianTableId = profileById.data?.id ?? profileByAuthId.data?.id ?? user.id;
+  const profileTableId = profileByAuthId.data?.id;
+  const guardianCandidateIds = Array.from(
+    new Set([user.id, profileTableId].filter(Boolean) as string[])
+  );
 
+  // Use .in() so we match regardless of which UUID was stored in guardian_id
   const { data: links } = await supabase
     .from('user_links')
     .select(`
+      guardian_id,
       student_id,
       users!user_links_student_id_fkey (
         id,
@@ -757,7 +909,7 @@ export async function getLinkedStudents(): Promise<LoggedInUser[]> {
         phone_number
       )
     `)
-    .eq('guardian_id', guardianTableId);
+    .in('guardian_id', guardianCandidateIds);
 
   if (!links) return [];
 
@@ -778,10 +930,21 @@ export async function unlinkStudent(studentId: string): Promise<{ success: boole
     return { success: false, error: 'Only guardians can unlink students' };
   }
 
+  // Resolve all possible guardian IDs (auth UUID and profile UUID) so we delete
+  // the row regardless of which UUID was stored when the link was created.
+  const [profileById, profileByAuthId] = await Promise.all([
+    supabase.from('users').select('id').eq('id', user.id).maybeSingle(),
+    supabase.from('users').select('id').eq('auth_user_id', user.id).maybeSingle(),
+  ]);
+  const profileTableId = profileByAuthId.data?.id;
+  const guardianCandidateIds = Array.from(
+    new Set([user.id, profileTableId].filter(Boolean) as string[])
+  );
+
   const { error } = await supabase
     .from('user_links')
     .delete()
-    .eq('guardian_id', user.id)
+    .in('guardian_id', guardianCandidateIds)
     .eq('student_id', studentId);
 
   if (error) {
@@ -822,21 +985,43 @@ export async function refreshUserLinkStatus(user: LoggedInUser): Promise<LoggedI
     console.log('[refreshUserLinkStatus] profileByAuthId:', JSON.stringify(profileByAuthIdResult.data));
     console.log('[refreshUserLinkStatus] freshProfile:', JSON.stringify(freshProfile));
 
-    // KEY FIX: use the profile's actual table `id` for the link query.
-    // When a profile is stored with auth_user_id, freshProfile.id is the table's
-    // own UUID — which is what guardian_id/student_id in user_links references.
-    // Using user.id (the auth UUID) in that case returns 0 rows → isLinked: false.
-    const linkQueryId = freshProfile?.id ?? user.id;
+    // Build a set of all possible IDs this user could be stored as in user_links.
+    // acceptInvite may have inserted with either the auth UUID or the profile table UUID
+    // depending on which schema was active and which code path ran. Querying with
+    // both IDs guarantees we find the row regardless of which was stored.
+    const profileTableId = freshProfile?.id;
+    const candidateIds = Array.from(
+      new Set([user.id, profileTableId].filter(Boolean) as string[])
+    );
+    const orFilter = candidateIds
+      .flatMap(id => [`guardian_id.eq.${id}`, `student_id.eq.${id}`])
+      .join(',');
 
-    const { data: links } = await supabase
+    // Dump ALL rows in user_links so we can see exactly what's stored
+    const { data: allUserLinks } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id');
+    console.log('[refreshUserLinkStatus] ALL user_links rows in DB:', JSON.stringify(allUserLinks));
+    console.log('[refreshUserLinkStatus] candidateIds we are querying with:', candidateIds);
+    console.log('[refreshUserLinkStatus] orFilter:', orFilter);
+
+    const { data: links, error: linksError } = await supabase
       .from('user_links')
       .select('guardian_id, student_id')
-      .or(`guardian_id.eq.${linkQueryId},student_id.eq.${linkQueryId}`);
+      .or(orFilter);
+    console.log('[refreshUserLinkStatus] links found:', JSON.stringify(links), 'error:', linksError?.message ?? 'none');
 
+    // The ID that was actually stored in the matched row is what we should use
+    // to identify ourselves, so linkedUserIds contains the *other* side.
     const linkedUserIds: string[] = [];
     links?.forEach(link => {
-      if (link.guardian_id === linkQueryId && link.student_id) linkedUserIds.push(link.student_id);
-      if (link.student_id === linkQueryId && link.guardian_id) linkedUserIds.push(link.guardian_id);
+      // Check both possible self-IDs so we handle whichever UUID was stored
+      if (candidateIds.includes(link.guardian_id) && link.student_id) {
+        if (!linkedUserIds.includes(link.student_id)) linkedUserIds.push(link.student_id);
+      }
+      if (candidateIds.includes(link.student_id) && link.guardian_id) {
+        if (!linkedUserIds.includes(link.guardian_id)) linkedUserIds.push(link.guardian_id);
+      }
     });
 
     const freshDisplayName =
@@ -844,7 +1029,8 @@ export async function refreshUserLinkStatus(user: LoggedInUser): Promise<LoggedI
         ? freshProfile.display_name
         : user.displayName;
 
-    console.log('[refreshUserLinkStatus] linkQueryId used:', linkQueryId);
+    console.log('[refreshUserLinkStatus] candidateIds used:', candidateIds);
+    console.log('[refreshUserLinkStatus] orFilter:', orFilter);
     console.log('[refreshUserLinkStatus] linkedUserIds found:', linkedUserIds);
     console.log('[refreshUserLinkStatus] freshDisplayName chosen:', freshDisplayName);
 

@@ -115,8 +115,27 @@ export default function OTPVerifyScreen() {
         setOtp('');
       } else {
         await markDeviceVerified();
-        // Check if linked before going to dashboard
-        if (!loggedInUser?.isLinked) {
+
+        // Do a fresh DB link check — loggedInUser.isLinked may be stale at this point
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const authUserId = authUser?.id;
+        let isActuallyLinked = false;
+
+        if (authUserId) {
+          const [byId, byAuthId] = await Promise.all([
+            supabase.from('users').select('id').eq('id', authUserId).maybeSingle(),
+            supabase.from('users').select('id').eq('auth_user_id', authUserId).maybeSingle(),
+          ]);
+          const tableId = byId.data?.id ?? byAuthId.data?.id ?? authUserId;
+          const { data: linkData } = await supabase
+            .from('user_links')
+            .select('id')
+            .or(`guardian_id.eq.${tableId},student_id.eq.${tableId}`)
+            .limit(1);
+          isActuallyLinked = Array.isArray(linkData) && linkData.length > 0;
+        }
+
+        if (!isActuallyLinked) {
           router.replace('/link-required');
         } else {
           router.replace(role === 'guardian' ? '/guardian' : '/student');
