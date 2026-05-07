@@ -1690,9 +1690,12 @@ export async function processAllowance(studentId?: string): Promise<boolean> {
   const guardianBalance = await getGuardianWallet();
   if (guardianBalance < config.amount) return false;
 
-  await setGuardianWallet(guardianBalance - config.amount);
-  const studentBalance = await getStudentWallet(studentId);
-  await setStudentWallet(studentBalance + config.amount, studentId);
+  // Fetch fresh balances from DB — never use cached values
+  const freshGuardianBalance = await getGuardianWallet();
+  const freshStudentBalance = await getStudentWallet(studentId);
+
+  await setGuardianWallet(freshGuardianBalance - config.amount);
+  await setStudentWallet(freshStudentBalance + config.amount, studentId);
 
   await addTransaction({
     type: 'allowance',

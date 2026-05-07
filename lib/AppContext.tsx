@@ -252,8 +252,12 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   const sendAllowanceNow = useCallback(async (amount: number, studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
     if (guardianBalance < amount) return;
+
+    // Fetch fresh student balance from DB — never trust cached value
+    const freshStudentBalance = await Storage.getStudentWallet(targetId);
+
     await Storage.setGuardianWallet(guardianBalance - amount);
-    await Storage.setStudentWallet(studentBalance + amount, targetId);
+    await Storage.setStudentWallet(freshStudentBalance + amount, targetId);
     await Storage.addTransaction({
       type: 'allowance',
       amount,
@@ -275,7 +279,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     }
 
     await refreshData(targetId);
-  }, [guardianBalance, studentBalance, loggedInUser, refreshData]);
+  }, [guardianBalance, loggedInUser, refreshData]);
 
   const updateAllowanceConfig = useCallback(async (config: AllowanceConfig, studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
@@ -293,7 +297,17 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       const currentTodaySpent = Storage.getTodaySpent(transactions);
       if (currentTodaySpent + amount > spendingLimit.dailyLimit) return false;
     }
-    await Storage.setStudentWallet(studentBalance - amount);
+
+    // Fetch fresh balance from DB before deducting
+    // Must pass the student's own ID so the correct wallet is read.
+    // Without it, getStudentWallet() falls back to linkedUserIds[0] which
+    // may resolve to a different user (or return 0), causing the balance to
+    // appear to reset after a guardian deposit.
+    const studentOwnId = loggedInUser?.id;
+    const freshStudentBalance = await Storage.getStudentWallet(studentOwnId);
+    if (freshStudentBalance < amount) return false;
+
+    await Storage.setStudentWallet(freshStudentBalance - amount, studentOwnId);
     await Storage.addTransaction({
       type: 'expense',
       amount,
