@@ -4,6 +4,18 @@ import * as Storage from './storage';
 import { supabase } from './supabase';
 import type { UserRole, AllowanceConfig, Transaction, SavingsGoal, LoggedInUser, SpendingLimit } from './storage';
 import { shouldRequireOTP, updateLastActive } from '../app/otp-verify';
+import {
+  registerForPushNotifications,
+  removePushToken,
+  notifyAllowanceReceived,
+  notifyStudentSpent,
+  notifyDepositSuccess,
+  notifySpendingLimitWarning,
+  notifyLowGuardianBalance,
+} from './notifications';
+
+// Low balance threshold — notify guardian when wallet drops below this
+const LOW_BALANCE_THRESHOLD = 100;
 
 interface AppContextValue {
   role: UserRole;
@@ -62,8 +74,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   const [linkedStudents, setLinkedStudents] = useState<LoggedInUser[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
-  // ── KEY FIX: keep selectedStudentId in a ref so all callbacks always read
-  // the CURRENT value without needing to be in deps arrays (avoids stale closures)
   const selectedStudentIdRef = useRef<string | null>(null);
   useEffect(() => {
     selectedStudentIdRef.current = selectedStudentId;
@@ -71,8 +81,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
 
   const todaySpent = useMemo(() => Storage.getTodaySpent(transactions), [transactions]);
 
-  // ── refreshData: always use the explicitly passed studentId first,
-  // then fall back to the ref (current value, never stale)
   const refreshData = useCallback(async (studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
     const [gb, sb, ac, txs, goals, sl] = await Promise.all([
@@ -89,9 +97,8 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     setTransactions(txs);
     setSavingsGoalsState(goals);
     setSpendingLimitState(sl);
-  }, []); // No deps — reads from ref, always current
+  }, []);
 
-  // When selected student changes, reload data for that student
   useEffect(() => {
     if (selectedStudentId) {
       refreshData(selectedStudentId);
@@ -100,15 +107,14 @@ function AppProviderInner({ children }: { children: ReactNode }) {
 
   const selectStudent = useCallback((studentId: string) => {
     setSelectedStudentId(studentId);
-    // Also update ref immediately so any in-flight callbacks see the new value
     selectedStudentIdRef.current = studentId;
   }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Immediately clear state on sign out — don't wait for async
         if (event === 'SIGNED_OUT') {
+          await removePushToken();
           await Storage.setLoggedInUser(null);
           setLoggedInUserState(null);
           setRole(null);
@@ -129,9 +135,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
         let user = await Storage.getLoggedInUser();
         console.log('[AppContext] getLoggedInUser result:', user ? `id=${user.id} role=${user.role} isLinked=${user.isLinked}` : 'NULL');
 
-        // AsyncStorage is empty but Supabase restored a valid session (e.g. Android
-        // keychain restore after AsyncStorage was cleared). Rebuild the user from the
-        // session so the app doesn't treat them as logged-out.
         if (!user && hasValidSession && session?.user) {
           console.log('[AppContext] AsyncStorage empty but session valid — rebuilding user from session');
           const rebuilt = await Storage.signInFromSession(session.user);
@@ -147,12 +150,14 @@ function AppProviderInner({ children }: { children: ReactNode }) {
           setRole(freshUser.role);
           setIsLinked(freshUser.isLinked || (freshUser.linkedUserIds?.length ?? 0) > 0);
 
-          // Check if OTP re-verification is required (session timeout)
           const otpRequired = await shouldRequireOTP();
           setNeedsOTP(otpRequired);
           if (!otpRequired) {
             await updateLastActive();
           }
+
+          // Register push notifications after login
+          await registerForPushNotifications();
 
           if (freshUser.role === 'guardian') {
             const students = await Storage.getLinkedStudents();
@@ -182,7 +187,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       }
     );
     return () => { subscription.unsubscribe(); };
-  }, []); // Empty deps — uses ref, never stale
+  }, []);
 
   useEffect(() => {
     if (loggedInUser?.role === 'guardian') {
@@ -212,6 +217,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   }, [loggedInUser, refreshData]);
 
   const logoutUser = useCallback(async () => {
+    await removePushToken();
     await Storage.signOut();
     setLoggedInUserState(null);
     setRole(null);
@@ -226,7 +232,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   }, []);
 
   const depositToGuardian = useCallback(async (amount: number, description?: string) => {
-    await Storage.depositToGuardianWallet(amount);
+    const newBalance = await Storage.depositToGuardianWallet(amount);
     await Storage.addTransaction({
       type: 'deposit',
       amount,
@@ -234,8 +240,14 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       date: new Date().toISOString(),
       from: 'guardian',
     });
+
+    // Notify guardian of successful deposit
+    if (loggedInUser) {
+      await notifyDepositSuccess(loggedInUser.id, amount, newBalance);
+    }
+
     await refreshData(selectedStudentIdRef.current ?? undefined);
-  }, [refreshData]);
+  }, [loggedInUser, refreshData]);
 
   const sendAllowanceNow = useCallback(async (amount: number, studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
@@ -250,18 +262,26 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       from: 'guardian',
       to: 'student',
     }, targetId);
-    await refreshData(targetId);
-  }, [guardianBalance, studentBalance, refreshData]);
 
-  // ── updateAllowanceConfig: just does the DB write.
-  // Caller MUST call refreshData(studentId) after all saves are done.
+    // Notify student that they received allowance
+    if (targetId && loggedInUser) {
+      await notifyAllowanceReceived(targetId, amount, loggedInUser.displayName);
+    }
+
+    // Warn guardian if balance is getting low after sending
+    const newGuardianBalance = guardianBalance - amount;
+    if (loggedInUser && newGuardianBalance < LOW_BALANCE_THRESHOLD && newGuardianBalance >= 0) {
+      await notifyLowGuardianBalance(loggedInUser.id, newGuardianBalance);
+    }
+
+    await refreshData(targetId);
+  }, [guardianBalance, studentBalance, loggedInUser, refreshData]);
+
   const updateAllowanceConfig = useCallback(async (config: AllowanceConfig, studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
     await Storage.setAllowanceConfig(config, targetId);
   }, []);
 
-  // ── updateSpendingLimit: just does the DB write.
-  // Caller MUST call refreshData(studentId) after all saves are done.
   const updateSpendingLimit = useCallback(async (limit: SpendingLimit, studentId?: string) => {
     const targetId = studentId ?? selectedStudentIdRef.current ?? undefined;
     await Storage.setSpendingLimit(limit, targetId);
@@ -282,9 +302,25 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       date: new Date().toISOString(),
       from: 'student',
     });
+
+    // Notify guardian that student spent money
+    if (loggedInUser && loggedInUser.linkedUserIds?.length > 0) {
+      const guardianId = loggedInUser.linkedUserIds[0];
+      await notifyStudentSpent(guardianId, amount, loggedInUser.displayName, description);
+    }
+
+    // Warn student if they're near spending limit (80% used)
+    if (spendingLimit && spendingLimit.isActive && loggedInUser) {
+      const newTodaySpent = Storage.getTodaySpent(transactions) + amount;
+      const usedPercent = newTodaySpent / spendingLimit.dailyLimit;
+      if (usedPercent >= 0.8) {
+        await notifySpendingLimitWarning(loggedInUser.id, newTodaySpent, spendingLimit.dailyLimit);
+      }
+    }
+
     await refreshData(selectedStudentIdRef.current ?? undefined);
     return true;
-  }, [studentBalance, spendingLimit, transactions, refreshData]);
+  }, [studentBalance, spendingLimit, transactions, loggedInUser, refreshData]);
 
   const cashoutStudent = useCallback(async (amount: number, method: string, accountName: string, accountNumber: string) => {
     if (studentBalance < amount) throw new Error('Insufficient balance');
@@ -297,8 +333,15 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       date: new Date().toISOString(),
       from: 'student',
     });
+
+    // Notify guardian of cashout
+    if (loggedInUser && loggedInUser.linkedUserIds?.length > 0) {
+      const guardianId = loggedInUser.linkedUserIds[0];
+      await notifyStudentSpent(guardianId, amount, loggedInUser.displayName, `Cash out via ${method}`);
+    }
+
     await refreshData(selectedStudentIdRef.current ?? undefined);
-  }, [studentBalance, refreshData]);
+  }, [studentBalance, loggedInUser, refreshData]);
 
   const addSavingsGoal = useCallback(async (name: string, target: number, iconName: string) => {
     const newGoal: SavingsGoal = {
@@ -371,8 +414,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     selectStudent,
     setLoggedInUser: (user: LoggedInUser | null) => {
       setLoggedInUserState(user);
-      // Sync derived state so callers (e.g. pending-invites) don't have to
-      // manually call setIsLinked after updating the user object.
       setIsLinked(!!user && (user.isLinked || (user.linkedUserIds?.length ?? 0) > 0));
       if (user?.role) setRole(user.role);
     },

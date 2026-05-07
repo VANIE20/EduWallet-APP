@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "664592350529",
+    "project_id": "eduwallet-52e42",
+    "storage_bucket": "eduwallet-52e42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:664592350529:android:22c51bc87db60df68ff5c0",
+        "android_client_info": {
+          "package_name": "com.anonymous.EduWalletAPP"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvOGUodFqt0QB4FMHhRWkX6UuJg5ANkPo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

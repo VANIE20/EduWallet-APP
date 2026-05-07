@@ -18,13 +18,20 @@
       "supportsTablet": true
     },
     "android": {
+
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.EduWalletAPP"
+      "package": "com.anonymous.EduWalletAPP",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,7 +39,16 @@
     "plugins": [
       "expo-asset",
       "expo-font",
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#9B1C1C",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "router": {},
