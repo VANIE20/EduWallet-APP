@@ -91,9 +91,14 @@ export default function GuardianDashboard() {
             <Text style={styles.greeting}>Hi, {displayName}!</Text>
             <Text style={styles.headerSubtitle}>Wallet Overview</Text>
           </View>
-          <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
-            <Text style={styles.avatarBtnText}>{(displayName || 'U')[0].toUpperCase()}</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable onPress={() => { tap(); router.push('/changelog'); }} style={styles.whatsNewBtn}>
+              <Ionicons name="megaphone-outline" size={18} color="rgba(255,255,255,0.85)" />
+            </Pressable>
+            <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
+              <Text style={styles.avatarBtnText}>{(displayName || 'U')[0].toUpperCase()}</Text>
+            </Pressable>
+          </View>
         </View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.balanceCard}>
@@ -342,6 +347,8 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1 },
   greeting: { fontSize: 22, fontFamily: 'DMSans_700Bold', color: Colors.white },
   headerSubtitle: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  headerActions:          { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  whatsNewBtn:            { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   avatarBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   avatarBtnText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.white },
   balanceCard: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 20, padding: 24 },

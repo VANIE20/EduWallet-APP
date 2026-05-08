@@ -55,11 +55,11 @@ const guardianItems: NavItem[] = [
     route: '/guardian/spending-limit',
   },
   {
-    key: 'invite',
-    label: 'Link',
-    icon: 'person-add-outline',
-    activeIcon: 'person-add',
-    route: '/guardian/invite-student',
+    key: 'goals',
+    label: 'Goals',
+    icon: 'flag-outline',
+    activeIcon: 'flag',
+    route: '/guardian/goals',
   },
 ];
 

@@ -12,6 +12,7 @@ import {
   notifyDepositSuccess,
   notifySpendingLimitWarning,
   notifyLowGuardianBalance,
+  notifyGoalBonus,
 } from './notifications';
 
 // Low balance threshold — notify guardian when wallet drops below this
@@ -42,9 +43,13 @@ interface AppContextValue {
   updateSpendingLimit: (limit: SpendingLimit, studentId?: string) => Promise<void>;
   addExpense: (amount: number, description: string, category: string) => Promise<boolean>;
   cashoutStudent: (amount: number, method: string, accountName: string, accountNumber: string) => Promise<void>;
-  addSavingsGoal: (name: string, target: number, iconName: string) => Promise<void>;
+  addSavingsGoal: (name: string, target: number, iconName: string, deadline?: string | null) => Promise<void>;
   contributeToGoal: (goalId: string, amount: number) => Promise<void>;
   deleteSavingsGoal: (goalId: string) => Promise<void>;
+  redeemGoal: (goalId: string, amount: number) => Promise<boolean>;
+  lockGoal: (goalId: string) => Promise<void>;
+  unlockGoal: (goalId: string) => Promise<void>;
+  coContributeToGoal: (goalId: string, amount: number, studentId?: string) => Promise<boolean>;
   refreshData: (studentId?: string) => Promise<void>;
   switchRole: () => Promise<void>;
 }
@@ -357,7 +362,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     await refreshData(selectedStudentIdRef.current ?? undefined);
   }, [studentBalance, loggedInUser, refreshData]);
 
-  const addSavingsGoal = useCallback(async (name: string, target: number, iconName: string) => {
+  const addSavingsGoal = useCallback(async (name: string, target: number, iconName: string, deadline?: string | null) => {
     const newGoal: SavingsGoal = {
       id: Storage.generateId(),
       name,
@@ -365,6 +370,9 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       currentAmount: 0,
       iconName,
       createdAt: new Date().toISOString(),
+      deadline: deadline ?? null,
+      isLocked: false,
+      lockedBy: null,
     };
     await Storage.insertSavingsGoal(newGoal);
     setSavingsGoalsState(prev => [newGoal, ...prev]);
@@ -392,12 +400,56 @@ function AppProviderInner({ children }: { children: ReactNode }) {
 
   const deleteSavingsGoal = useCallback(async (goalId: string) => {
     const goal = savingsGoals.find(g => g.id === goalId);
-    if (goal && goal.currentAmount > 0) {
+    if (goal && goal.currentAmount > 0 && !goal.isLocked) {
       await Storage.setStudentWallet(studentBalance + goal.currentAmount);
     }
     await Storage.deleteSavingsGoalById(goalId);
     await refreshData(selectedStudentIdRef.current ?? undefined);
   }, [studentBalance, savingsGoals, refreshData]);
+
+  const redeemGoal = useCallback(async (goalId: string, amount: number): Promise<boolean> => {
+    const goal = savingsGoals.find(g => g.id === goalId);
+    if (!goal || goal.isLocked) return false;
+    const success = await Storage.redeemGoal(goalId, amount, goal.name);
+    if (success) await refreshData(selectedStudentIdRef.current ?? undefined);
+    return success;
+  }, [savingsGoals, refreshData]);
+
+  const lockGoal = useCallback(async (goalId: string) => {
+    const user = await Storage.getLoggedInUser();
+    if (!user) return;
+    const success = await Storage.lockSavingsGoal(goalId, user.displayName);
+    if (success) {
+      await refreshData(selectedStudentIdRef.current ?? undefined);
+    } else {
+      const { Alert } = await import('react-native');
+      Alert.alert('Lock Failed', 'Could not lock the goal. Please try again or check your connection.');
+    }
+  }, [refreshData]);
+
+  const unlockGoal = useCallback(async (goalId: string) => {
+    const success = await Storage.unlockSavingsGoal(goalId);
+    if (success) {
+      await refreshData(selectedStudentIdRef.current ?? undefined);
+    } else {
+      const { Alert } = await import('react-native');
+      Alert.alert('Unlock Failed', 'Could not unlock the goal. Please try again or check your connection.');
+    }
+  }, [refreshData]);
+
+  const coContributeToGoal = useCallback(async (goalId: string, amount: number, studentId?: string): Promise<boolean> => {
+    const goal = savingsGoals.find(g => g.id === goalId);
+    if (!goal) return false;
+    const targetStudentId = studentId ?? selectedStudentIdRef.current ?? undefined;
+    const success = await Storage.coContributeToGoal(goalId, amount, goal.name, targetStudentId);
+    if (success) {
+      await refreshData(selectedStudentIdRef.current ?? undefined);
+      if (targetStudentId && loggedInUser) {
+        await notifyGoalBonus(targetStudentId, amount, loggedInUser.displayName, goal.name);
+      }
+    }
+    return success;
+  }, [savingsGoals, refreshData, loggedInUser]);
 
   const switchRole = useCallback(async () => {
     const newRole = role === 'guardian' ? 'student' : 'guardian';
@@ -442,6 +494,10 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     addSavingsGoal,
     contributeToGoal,
     deleteSavingsGoal,
+    redeemGoal,
+    lockGoal,
+    unlockGoal,
+    coContributeToGoal,
     refreshData,
     switchRole,
   }), [
@@ -450,7 +506,7 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     transactions, savingsGoals, todaySpent, linkedStudents, selectedStudentId,
     selectStudent, logoutUser, setUserRole, depositToGuardian, sendAllowanceNow,
     updateAllowanceConfig, updateSpendingLimit, addExpense, cashoutStudent,
-    addSavingsGoal, contributeToGoal, deleteSavingsGoal, refreshData, switchRole,
+    addSavingsGoal, contributeToGoal, deleteSavingsGoal, redeemGoal, lockGoal, unlockGoal, coContributeToGoal, refreshData, switchRole,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

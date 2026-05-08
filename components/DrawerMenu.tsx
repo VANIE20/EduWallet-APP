@@ -101,6 +101,14 @@ export default function DrawerMenu({
       onPress: () => { onClose(); router.push('/profile'); },
     },
     {
+      key: 'goals',
+      label: 'Savings Goals',
+      icon: 'flag-outline',
+      iconBg: '#ECFDF5',
+      iconColor: '#10B981',
+      onPress: () => { onClose(); router.push('/guardian/goals'); },
+    },
+    {
       key: 'invite',
       label: 'Link Student',
       icon: 'person-add-outline',

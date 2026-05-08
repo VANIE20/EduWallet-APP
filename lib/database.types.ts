@@ -161,6 +161,9 @@ export interface Database {
           icon_name: string
           created_at: string
           updated_at: string
+          is_locked: boolean
+          locked_by: string | null
+          deadline: string | null
         }
         Insert: {
           id?: string
@@ -171,6 +174,9 @@ export interface Database {
           icon_name: string
           created_at?: string
           updated_at?: string
+          is_locked?: boolean
+          locked_by?: string | null
+          deadline?: string | null
         }
         Update: {
           id?: string
@@ -181,6 +187,9 @@ export interface Database {
           icon_name?: string
           created_at?: string
           updated_at?: string
+          is_locked?: boolean
+          locked_by?: string | null
+          deadline?: string | null
         }
       }
     }

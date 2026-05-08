@@ -41,6 +41,9 @@ export interface SavingsGoal {
   currentAmount: number;
   iconName: string;
   createdAt: string;
+  deadline?: string | null;       // ISO date string, optional
+  isLocked: boolean;              // guardian can lock — student can't withdraw
+  lockedBy?: string | null;       // guardian's displayName who locked it
 }
 
 export type UserRole = 'guardian' | 'student' | null;
@@ -1463,6 +1466,9 @@ export async function getSavingsGoals(studentId?: string): Promise<SavingsGoal[]
     currentAmount: parseFloat(goal.current_amount.toString()),
     iconName: goal.icon_name,
     createdAt: goal.created_at,
+    deadline: goal.deadline ?? null,
+    isLocked: goal.is_locked ?? false,
+    lockedBy: goal.locked_by ?? null,
   }));
 }
 
@@ -1515,6 +1521,9 @@ export async function insertSavingsGoal(goal: SavingsGoal, studentId?: string): 
       current_amount: goal.currentAmount,
       icon_name: goal.iconName,
       created_at: goal.createdAt,
+      deadline: goal.deadline ?? null,
+      is_locked: goal.isLocked ?? false,
+      locked_by: goal.lockedBy ?? null,
     });
 
   if (error) {
@@ -1549,6 +1558,231 @@ export async function deleteSavingsGoalById(goalId: string): Promise<boolean> {
     console.error('Error deleting savings goal:', error);
     return false;
   }
+  return true;
+}
+
+/** Guardian locks a goal — student cannot withdraw while locked */
+export async function lockSavingsGoal(goalId: string, lockedByName: string): Promise<boolean> {
+  // Try SECURITY DEFINER RPC first (bypasses RLS for guardian→student updates)
+  const { data: rpcResult, error: rpcError } = await supabase
+    .rpc('guardian_lock_goal', { p_goal_id: goalId, p_locked_by: lockedByName, p_is_locked: true });
+  if (!rpcError) return rpcResult === true;
+
+  // RPC not yet created — fall back to direct update
+  console.warn('guardian_lock_goal RPC unavailable, trying direct update:', rpcError.message);
+  const user = await getLoggedInUser();
+  if (!user) return false;
+  const rawStudentId = user.role === 'guardian' ? user.linkedUserIds?.[0] : user.id;
+  if (!rawStudentId) return false;
+  const studentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .update({ is_locked: true, locked_by: lockedByName })
+    .eq('id', goalId).eq('student_id', studentId).select('id');
+  if (error) { console.error('Error locking goal:', error); return false; }
+  if (!data || data.length === 0) { console.error('lockSavingsGoal: 0 rows — run supabase_guardian_goals_rls.sql in Supabase SQL Editor'); return false; }
+  return true;
+}
+
+/** Guardian unlocks a goal */
+export async function unlockSavingsGoal(goalId: string): Promise<boolean> {
+  // Try SECURITY DEFINER RPC first (bypasses RLS for guardian→student updates)
+  const { data: rpcResult, error: rpcError } = await supabase
+    .rpc('guardian_lock_goal', { p_goal_id: goalId, p_locked_by: '', p_is_locked: false });
+  if (!rpcError) return rpcResult === true;
+
+  // RPC not yet created — fall back to direct update
+  console.warn('guardian_lock_goal RPC unavailable, trying direct update:', rpcError.message);
+  const user = await getLoggedInUser();
+  if (!user) return false;
+  const rawStudentId = user.role === 'guardian' ? user.linkedUserIds?.[0] : user.id;
+  if (!rawStudentId) return false;
+  const studentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .update({ is_locked: false, locked_by: null })
+    .eq('id', goalId).eq('student_id', studentId).select('id');
+  if (error) { console.error('Error unlocking goal:', error); return false; }
+  if (!data || data.length === 0) { console.error('unlockSavingsGoal: 0 rows — run supabase_guardian_goals_rls.sql in Supabase SQL Editor'); return false; }
+  return true;
+}
+
+/** Guardian co-contributes to a student's goal (deducts from guardian wallet, adds to goal) */
+export async function coContributeToGoal(
+  goalId: string,
+  amount: number,
+  goalName: string,
+  studentId?: string,
+): Promise<boolean> {
+  const user = await getLoggedInUser();
+  if (!user) return false;
+
+  const rawGuardianId = user.role === 'guardian' ? user.id : user.linkedUserIds[0];
+  if (!rawGuardianId) return false;
+  const guardianId = await resolveProfileId(rawGuardianId) ?? rawGuardianId;
+
+  // Resolve student ID
+  const rawStudentId = studentId || user.linkedUserIds[0];
+  if (!rawStudentId) return false;
+  const targetStudentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+
+  // Get current guardian wallet
+  const { data: walletRows } = await supabase.rpc('get_or_create_wallet', { p_user_id: guardianId });
+  const guardianBalance: number = walletRows?.[0]?.balance ?? 0;
+  if (guardianBalance < amount) return false;
+
+  // Get current goal — cap contribution at remaining gap
+  const { data: goalData } = await supabase
+    .from('savings_goals')
+    .select('current_amount, target_amount')
+    .eq('id', goalId)
+    .maybeSingle();
+  if (!goalData) return false;
+
+  const currentGoalAmount = parseFloat(goalData.current_amount.toString());
+  const targetGoalAmount  = parseFloat(goalData.target_amount.toString());
+  const remaining         = targetGoalAmount - currentGoalAmount;
+  if (remaining <= 0) return false;
+
+  const actual = Math.min(amount, remaining);
+
+  // 1. Deduct from guardian wallet
+  const { error: guardianWalletErr } = await supabase
+    .from('wallets')
+    .update({ balance: guardianBalance - actual, updated_at: new Date().toISOString() })
+    .eq('user_id', guardianId);
+  if (guardianWalletErr) { console.error('coContribute: guardian wallet deduct failed', guardianWalletErr); return false; }
+
+  // 2. Credit student wallet first (same path as sendAllowanceNow — works under guardian auth)
+  const { data: sWalletRows } = await supabase.rpc('get_or_create_wallet', { p_user_id: targetStudentId });
+  const studentBalance: number = sWalletRows?.[0]?.balance ?? 0;
+  const { error: studentWalletErr } = await supabase
+    .from('wallets')
+    .upsert({ user_id: targetStudentId, balance: studentBalance + actual }, { onConflict: 'user_id' });
+  if (studentWalletErr) {
+    console.error('coContribute: student wallet credit failed', studentWalletErr);
+    // Refund guardian
+    await supabase.from('wallets').update({ balance: guardianBalance, updated_at: new Date().toISOString() }).eq('user_id', guardianId);
+    return false;
+  }
+
+  // 3. Update goal amount via SECURITY DEFINER RPC (bypasses RLS)
+  const { data: rpcGoalResult, error: rpcGoalErr } = await supabase
+    .rpc('guardian_update_goal_amount', {
+      p_goal_id: goalId,
+      p_new_amount: currentGoalAmount + actual,
+    });
+
+  let goalErr: any = null;
+  if (rpcGoalErr) {
+    // RPC not yet available — try direct update with student_id filter
+    console.warn('guardian_update_goal_amount RPC unavailable, trying direct update:', rpcGoalErr.message);
+    const { data: updatedGoalRows, error: directGoalErr } = await supabase
+      .from('savings_goals')
+      .update({ current_amount: currentGoalAmount + actual })
+      .eq('id', goalId)
+      .eq('student_id', targetStudentId)
+      .select('id');
+    goalErr = directGoalErr;
+    if (!directGoalErr && (!updatedGoalRows || updatedGoalRows.length === 0)) {
+      console.error('coContribute: goal update matched 0 rows — run supabase_guardian_goals_rls.sql in Supabase SQL Editor');
+      goalErr = new Error('0 rows updated');
+    }
+  } else if (rpcGoalResult === false) {
+    console.error('coContribute: guardian_update_goal_amount RPC returned false — not linked to student?');
+    goalErr = new Error('RPC returned false');
+  }
+
+  if (goalErr) {
+    console.error('coContribute: goal update failed', goalErr);
+    // Leave the money in student wallet rather than losing it
+    // The student can manually contribute from their wallet if needed
+    await supabase.from('transactions').insert({
+      type: 'allowance',
+      amount: actual,
+      description: `Guardian bonus (goal update failed — added to wallet): ${goalName}`,
+      category: 'savings',
+      from_user_id: guardianId,
+      to_user_id: targetStudentId,
+      created_at: new Date().toISOString(),
+    });
+    return false;
+  }
+
+  // 4. Deduct the credited amount back out of student wallet now that it's in the goal
+  await supabase
+    .from('wallets')
+    .upsert({ user_id: targetStudentId, balance: studentBalance }, { onConflict: 'user_id' });
+
+  // 5. Record transaction
+  await supabase.from('transactions').insert({
+    type: 'allowance',
+    amount: actual,
+    description: `Guardian bonus toward: ${goalName}`,
+    category: 'savings',
+    from_user_id: guardianId,
+    to_user_id: targetStudentId,
+    created_at: new Date().toISOString(),
+  });
+
+  return true;
+}
+
+/** Student redeems a completed (or partial) goal back to their wallet */
+export async function redeemGoal(
+  goalId: string,
+  amountToRedeem: number,
+  goalName: string,
+  studentId?: string,
+): Promise<boolean> {
+  const user = await getLoggedInUser();
+  if (!user) return false;
+
+  const rawStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawStudentId) return false;
+  const targetStudentId = await resolveProfileId(rawStudentId) ?? rawStudentId;
+
+  // Get current goal state
+  const { data: goalData } = await supabase
+    .from('savings_goals')
+    .select('current_amount, is_locked')
+    .eq('id', goalId)
+    .maybeSingle();
+  if (!goalData) return false;
+  if (goalData.is_locked) return false; // cannot redeem a locked goal
+
+  const actual = Math.min(amountToRedeem, parseFloat(goalData.current_amount.toString()));
+  if (actual <= 0) return false;
+
+  // Add back to student wallet
+  const { data: walletRows } = await supabase.rpc('get_or_create_wallet', { p_user_id: targetStudentId });
+  const currentBalance: number = walletRows?.[0]?.balance ?? 0;
+  const { error: walletErr } = await supabase
+    .from('wallets')
+    .update({ balance: currentBalance + actual, updated_at: new Date().toISOString() })
+    .eq('user_id', targetStudentId);
+  if (walletErr) { console.error('Error updating student wallet on redeem:', walletErr); return false; }
+
+  // Reduce goal amount
+  const newGoalAmount = parseFloat(goalData.current_amount.toString()) - actual;
+  if (newGoalAmount <= 0) {
+    // Delete goal if fully redeemed
+    await supabase.from('savings_goals').delete().eq('id', goalId);
+  } else {
+    await supabase.from('savings_goals').update({ current_amount: newGoalAmount }).eq('id', goalId);
+  }
+
+  // Record transaction
+  await supabase.from('transactions').insert({
+    type: 'deposit',
+    amount: actual,
+    description: `Redeemed from goal: ${goalName}`,
+    category: 'savings',
+    from_user_id: targetStudentId,
+    to_user_id: null,
+    created_at: new Date().toISOString(),
+  });
+
   return true;
 }
 

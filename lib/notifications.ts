@@ -7,7 +7,6 @@ import { getLoggedInUser } from './storage';
 // ── Configure how notifications appear when app is in foreground ──────────
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
     shouldShowBanner: true,
@@ -238,6 +237,21 @@ export async function notifySpendingLimitWarning(
     '⚠️ Spending Limit Warning',
     `You only have ₱${remaining.toLocaleString('en-PH', { minimumFractionDigits: 2 })} left for today`,
     { type: 'spending_limit_warning', remaining }
+  );
+}
+
+// Called when guardian sends a bonus contribution to a student's goal
+export async function notifyGoalBonus(
+  studentUserId: string,
+  amount: number,
+  guardianName: string,
+  goalName: string
+): Promise<void> {
+  await sendPushNotification(
+    studentUserId,
+    '🎁 Bonus Added to Your Goal!',
+    `${guardianName} added ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} to your "${goalName}" goal!`,
+    { type: 'goal_bonus', amount, goalName }
   );
 }
 

@@ -17,6 +17,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="guardian" />
         <Stack.Screen name="student" />
+        <Stack.Screen name="changelog" options={{ presentation: "modal" }} />
       </Stack>
     </AppProvider>
   );
