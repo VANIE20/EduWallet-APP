@@ -114,7 +114,7 @@ export default function LoginScreen() {
         <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.header}>
           <View>
             <Image 
-              source={require('../assets/icon.png')} 
+              source={require('../assets/adaptive-icon.png')} 
               style={{ width: 170, height: 170,}} 
 />            
           </View>
