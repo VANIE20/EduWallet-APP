@@ -1,9 +1,26 @@
 // app/_layout.tsx
 import { Stack } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
+import * as Updates from 'expo-updates';
 import { AppProvider } from '../lib/AppContext';
 
+async function applyUpdate() {
+  try {
+    const update = await Updates.checkForUpdateAsync();
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    }
+  } catch (e) {
+    console.error('OTA update error:', e);
+  }
+}
+
 export default function RootLayout() {
+  useEffect(() => {
+    applyUpdate();
+  }, []);
+
   return (
     <AppProvider>
       <Stack screenOptions={{ headerShown: false }}>
