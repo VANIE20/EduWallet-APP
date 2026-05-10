@@ -11,6 +11,7 @@ import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
 import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
+import AdBanner from '../../components/AdBanner';
 
 function formatCurrency(amount: number): string {
   return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -65,9 +66,7 @@ export default function GuardianDashboard() {
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: async () => {
-          await logoutUser();
-        },
+        onPress: async () => { await logoutUser(); },
       },
     ]);
   };
@@ -91,9 +90,6 @@ export default function GuardianDashboard() {
             <Text style={styles.headerSubtitle}>Wallet Overview</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={() => { tap(); router.push('/changelog'); }} style={styles.whatsNewBtn}>
-              <Ionicons name="megaphone-outline" size={18} color="rgba(255,255,255,0.85)" />
-            </Pressable>
             <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
               <Text style={styles.avatarBtnText}>{(displayName || 'U')[0].toUpperCase()}</Text>
             </Pressable>
@@ -104,7 +100,6 @@ export default function GuardianDashboard() {
           <Text style={styles.balanceLabel}>Your Wallet</Text>
           <Text style={styles.balanceAmount}>{formatCurrency(guardianBalance)}</Text>
 
-          {/* Student balance row — tappable switcher if multiple students */}
           <Pressable
             style={styles.studentBalanceRow}
             onPress={() => hasMultipleStudents && setStudentPickerOpen(true)}
@@ -169,8 +164,13 @@ export default function GuardianDashboard() {
           </Pressable>
         </Animated.View>
 
-        {/* Invite banner — always visible so guardian can add more students */}
+        {/* ── Rotating Ad Banner ── */}
         <Animated.View entering={FadeInDown.delay(320).duration(500)}>
+          <AdBanner />
+        </Animated.View>
+
+        {/* Invite banner */}
+        <Animated.View entering={FadeInDown.delay(330).duration(500)}>
           <Pressable onPress={() => { tap(); router.push('/guardian/invite-student'); }} style={styles.linkBanner}>
             <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
             <Text style={styles.linkBannerText}>
@@ -180,9 +180,8 @@ export default function GuardianDashboard() {
           </Pressable>
         </Animated.View>
 
-        {/* Linked students list (only when more than 1) */}
         {linkedStudents.length > 0 && (
-          <Animated.View entering={FadeInDown.delay(330).duration(500)} style={styles.studentsCard}>
+          <Animated.View entering={FadeInDown.delay(340).duration(500)} style={styles.studentsCard}>
             <Text style={styles.studentsCardTitle}>Linked Students</Text>
             {linkedStudents.map(student => (
               <View key={student.id} style={styles.studentRowContainer}>
@@ -334,10 +333,7 @@ export default function GuardianDashboard() {
         </Pressable>
       </Modal>
 
-      <BottomNav
-        userType="guardian"
-        onLogout={handleLogout}
-      />
+      <BottomNav userType="guardian" onLogout={handleLogout} />
 
       {showOnboarding && (
         <OnboardingTutorial
@@ -356,8 +352,8 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1 },
   greeting: { fontSize: 22, fontFamily: 'DMSans_700Bold', color: Colors.white },
   headerSubtitle: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  headerActions:          { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  whatsNewBtn:            { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  whatsNewBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   avatarBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   avatarBtnText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.white },
   balanceCard: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 20, padding: 24 },
@@ -369,7 +365,7 @@ const styles = StyleSheet.create({
   lowBalanceAlertText: { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#FCD34D' },
   content: { flex: 1 },
   scrollContent: { padding: 24 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   actionBtn: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
   actionPressed: { opacity: 0.8, transform: [{ scale: 0.96 }] },
   actionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
@@ -414,7 +410,6 @@ const styles = StyleSheet.create({
   txDesc: { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
   txDate: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginTop: 2 },
   txAmount: { fontSize: 15, fontFamily: 'DMSans_700Bold' },
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: Colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },

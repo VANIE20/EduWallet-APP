@@ -275,7 +275,7 @@ export default function AddGoalScreen() {
             <Text style={styles.currencySign}>₱</Text>
             <TextInput style={styles.amountInput} value={target}
               onChangeText={t => setTarget(t.replace(/[^0-9.]/g, ''))}
-              placeholder="0.00" placeholderTextColor={Colors.textTertiary} keyboardType="decimal-pad" />
+              placeholder="0.0" placeholderTextColor={Colors.textTertiary} keyboardType="decimal-pad" />
           </View>
         </View>
 

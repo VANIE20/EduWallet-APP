@@ -3,17 +3,17 @@
 
 const Colors = {
   // ── Brand ───────────────────────────────────────────────────────────────
-  primary:              '#b12414',   // guardian red
-  primaryLight:         '#FEF2F2',   // guardian red tint bg
+  primary:              '#530303a6',   // guardian red
+  primaryLight:         '#ffffff',   // guardian red tint bg
 
   // Guardian gradient
-  guardianGradientStart: '#b12414',
-  guardianGradientEnd:   '#d55a13',
+  guardianGradientStart: '#8d0404ba',
+  guardianGradientEnd:   '#fefefe',
 
   // Student theme (blue)
-  studentPrimary:       '#b12414',
-  studentGradientStart: '#b12414',
-  studentGradientEnd:   '#d55a13',
+  studentPrimary:       '#fb0000ae',
+  studentGradientStart: '#dce300',
+  studentGradientEnd:   '#f0e5d5',
   studentPrimaryLight:  '#EEF2FF',
 
   // ── Semantic ─────────────────────────────────────────────────────────────

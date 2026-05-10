@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
-  Platform, KeyboardAvoidingView, ScrollView, Alert, ActivityIndicator,
+  Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Colors from '../../constants/colors';
+import ConfirmDialog, { DialogConfig } from '../../components/ConfirmDialog';
 import { useApp } from '../../lib/AppContext';
 
 const QUICK_AMOUNTS = [50, 100, 200, 500, 1000, 2000];
@@ -65,6 +66,7 @@ export default function CashoutScreen() {
   const [method, setMethod]           = useState<CashoutMethod>('gcash');
   const [accountNo, setAccountNo]     = useState('');
   const [isSubmitting, setSubmitting] = useState(false);
+  const [dialog, setDialog]           = useState<DialogConfig | null>(null);
 
   const tap = () => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
 
@@ -73,7 +75,7 @@ export default function CashoutScreen() {
   const isValid = parsedAmount > 0 && (
     method === 'card'
       ? accountNo.trim().length >= 6
-      : accountNo.replace(/\D/g, '').length >= 10 && accountNo.replace(/\D/g, '').length <= 11
+      : accountNo.startsWith('09') && accountNo.replace(/\D/g, '').length >= 10 && accountNo.replace(/\D/g, '').length <= 11
   );
   const hasEnough = parsedAmount <= studentBalance;
 
@@ -82,56 +84,47 @@ export default function CashoutScreen() {
     if (!isValid || !hasEnough) return;
     tap();
 
-    Alert.alert(
-      'Confirm Cash Out',
-      `Cash out ₱${parsedAmount.toFixed(2)} via ${selMethod.label} to ${accountNo}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setSubmitting(true);
-            try {
-              // Simulate processing delay
-              await new Promise(r => setTimeout(r, 1500));
-
-              // Record the cashout transaction via storage directly
-              // (no real payout — PayMongo doesn't support cashout)
-              const { addTransaction, setStudentWallet } =
-                await import('../../lib/storage');
-
-              await setStudentWallet(studentBalance - parsedAmount);
-              await addTransaction({
-                type: 'expense',
-                amount: parsedAmount,
-                description: `Cash out via ${selMethod.label} to ${accountNo}`,
-                category: 'cashout',
-                date: new Date().toISOString(),
-                from: 'student',
-              });
-
-              await refreshData();
-
-              if (Platform.OS !== 'web') {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }
-
-              Alert.alert(
-                '✅ Cash Out Requested!',
-                `₱${parsedAmount.toFixed(2)} via ${selMethod.label} has been recorded.\n\nNote: This is a simulated cashout — actual transfer processing may take 1–3 business days.`,
-                [
-                  { text: 'Done', onPress: () => router.back() },
-                ],
-              );
-            } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Something went wrong. Please try again.');
-            } finally {
-              setSubmitting(false);
-            }
-          },
-        },
-      ],
-    );
+    setDialog({
+      type: 'confirm',
+      title: 'Confirm Cash Out',
+      message: `Cash out ₱${parsedAmount.toFixed(2)} via ${selMethod.label} to ${accountNo}?`,
+      confirmLabel: 'Cash Out',
+      cancelLabel: 'Cancel',
+      onConfirm: async () => {
+        setSubmitting(true);
+        try {
+          await new Promise(r => setTimeout(r, 1500));
+          const { addTransaction, setStudentWallet } = await import('../../lib/storage');
+          await setStudentWallet(studentBalance - parsedAmount);
+          await addTransaction({
+            type: 'expense',
+            amount: parsedAmount,
+            description: `Cash out via ${selMethod.label} to ${accountNo}`,
+            category: 'cashout',
+            date: new Date().toISOString(),
+            from: 'student',
+          });
+          await refreshData();
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setDialog({
+            type: 'success',
+            title: 'Cash Out Requested',
+            message: `₱${parsedAmount.toFixed(2)} via ${selMethod.label} to ${accountNo} has been recorded. Processing takes 1–3 business days.`,
+            confirmLabel: 'Done',
+            onConfirm: () => router.back(),
+          });
+        } catch (err: any) {
+          setDialog({
+            type: 'error',
+            title: 'Something went wrong',
+            message: err?.message || 'Please try again.',
+            confirmLabel: 'OK',
+          });
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
   }, [isValid, hasEnough, parsedAmount, selMethod, accountNo, studentBalance, refreshData]);
 
   return (
@@ -171,7 +164,7 @@ export default function CashoutScreen() {
               style={[styles.amountInput, parsedAmount > 0 && styles.amountInputActive]}
               value={amount}
               onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-              placeholder="0.00"
+              placeholder="0.0"
               placeholderTextColor="#94A3B8"
               keyboardType="decimal-pad"
               autoFocus
@@ -255,14 +248,18 @@ export default function CashoutScreen() {
         <Text style={styles.sectionLabel}>{selMethod.accountLabel}</Text>
         <View style={[styles.accountInputWrap, {
           borderColor: method !== 'card'
-            ? (accountNo.length >= 10 ? selMethod.color : accountNo.length > 0 ? '#E2E8F0' : '#E2E8F0')
+            ? (!accountNo.startsWith('09') && accountNo.length > 0
+                ? '#DC2626'
+                : accountNo.length >= 10 ? selMethod.color : '#E2E8F0')
             : (accountNo.length >= 6 ? selMethod.color : '#E2E8F0'),
         }]}>
           <Ionicons
             name={selMethod.icon}
             size={18}
             color={method !== 'card'
-              ? (accountNo.length >= 10 ? selMethod.color : '#94A3B8')
+              ? (!accountNo.startsWith('09') && accountNo.length > 0
+                  ? '#DC2626'
+                  : accountNo.length >= 10 ? selMethod.color : '#94A3B8')
               : (accountNo.length >= 6 ? selMethod.color : '#94A3B8')}
             style={{ marginRight: 10 }}
           />
@@ -285,13 +282,29 @@ export default function CashoutScreen() {
           />
           {method !== 'card' && accountNo.length > 0 && (
             <Ionicons
-              name={accountNo.length >= 10 ? 'checkmark-circle' : 'alert-circle-outline'}
+              name={
+                !accountNo.startsWith('09')
+                  ? 'alert-circle-outline'
+                  : accountNo.length >= 10 ? 'checkmark-circle' : 'alert-circle-outline'
+              }
               size={18}
-              color={accountNo.length >= 10 ? selMethod.color : '#DC2626'}
+              color={
+                !accountNo.startsWith('09')
+                  ? '#DC2626'
+                  : accountNo.length >= 10 ? selMethod.color : '#DC2626'
+              }
             />
           )}
         </View>
-        {method !== 'card' && accountNo.length > 0 && accountNo.length < 10 && (
+
+        {/* Validation hints */}
+        {method !== 'card' && accountNo.length > 0 && !accountNo.startsWith('09') && (
+          <View style={styles.accountWarningRow}>
+            <Ionicons name="warning-outline" size={13} color="#DC2626" />
+            <Text style={styles.accountHint}>Mobile number must start with 09</Text>
+          </View>
+        )}
+        {method !== 'card' && accountNo.length > 0 && accountNo.startsWith('09') && accountNo.length < 10 && (
           <Text style={styles.accountHint}>
             {`${10 - accountNo.length} more digit${10 - accountNo.length !== 1 ? 's' : ''} needed`}
           </Text>
@@ -305,7 +318,7 @@ export default function CashoutScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.infoBannerTitle}>Simulated Cash Out</Text>
             <Text style={styles.infoBannerBody}>
-              Cash-out is recorded in your history. Actual transfers are processed manually by your school.
+              Cash-out is recorded in your history.
             </Text>
           </View>
         </View>
@@ -348,6 +361,7 @@ export default function CashoutScreen() {
           )}
         </Pressable>
       </View>
+      <ConfirmDialog config={dialog} onClose={() => setDialog(null)} />
     </KeyboardAvoidingView>
   );
 }
@@ -389,8 +403,9 @@ const styles = StyleSheet.create({
   methodCheck:          { position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   accountInputWrap:     { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 2, marginBottom: 6 },
   accountInput:         { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.text },
+  accountWarningRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 18, marginLeft: 4 },
   accountHint:          { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#DC2626', marginBottom: 18, marginLeft: 4 },
-  infoBanner:           { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F0F9FF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#BAE6FD' },
+  infoBanner:           { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F0F9FF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#BAE6FD', marginTop: 8 },
   infoBannerIcon:       { width: 38, height: 38, borderRadius: 10, backgroundColor: '#E0F2FE', alignItems: 'center', justifyContent: 'center' },
   infoBannerTitle:      { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#0369A1' },
   infoBannerBody:       { fontSize: 12, fontFamily: 'DMSans_400Regular', color: '#0284C7', marginTop: 2, lineHeight: 17 },

@@ -100,6 +100,12 @@ export default function LoginScreen() {
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
 
+      <View style={[styles.topBar, { paddingTop: Platform.OS === 'web' ? 20 : insets.top + 8 }]}>
+        <Pressable onPress={() => router.push('/changelog')} style={styles.whatsNewBtn}>
+          <Ionicons name="megaphone-outline" size={22} color="rgba(255,255,255,0.85)" />
+        </Pressable>
+      </View>
+
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -254,4 +260,7 @@ const styles = StyleSheet.create({
   signupLink: { marginTop: 20, alignItems: 'center' },
   signupText: { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textSecondary },
   signupTextBold: { fontFamily: 'DMSans_700Bold', color: Colors.primary },
+  topBar: { position: 'absolute', top: 0, right: 0, left: 0, flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 20, zIndex: 10 },
+  whatsNewBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  whatsNewText: { flex: 1, fontSize: 13, fontFamily: 'DMSans_500Medium', color: Colors.primary, textAlign: 'center' },
 });

@@ -118,7 +118,6 @@ export default function ExpenseScreen() {
   const isValid =
     parsedAmount > 0 &&
     hasEnough &&
-    description.trim().length > 0 &&
     isValidAccount &&
     !wouldExceedLimit;
 
@@ -137,9 +136,13 @@ export default function ExpenseScreen() {
           onPress: async () => {
             setSubmitting(true);
             try {
+              const desc = description.trim()
+                ? `${description.trim()} · Payout via ${selMethod.label} to ${accountNo}`
+                : `Payout via ${selMethod.label} to ${accountNo}`;
+
               const success = await addExpense(
                 parsedAmount,
-                `${description.trim()} \u00b7 Payout via ${selMethod.label} to ${accountNo}`,
+                desc,
                 category,
               );
 
@@ -214,7 +217,7 @@ export default function ExpenseScreen() {
             style={[styles.amountInput, parsedAmount > 0 && styles.amountInputActive]}
             value={amount}
             onChangeText={handleAmountChange}
-            placeholder="0.00"
+            placeholder="0.0"
             placeholderTextColor={Colors.textTertiary}
             keyboardType="decimal-pad"
             editable={!isSubmitting}
@@ -264,7 +267,7 @@ export default function ExpenseScreen() {
 
         {/* Description */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>What did you spend on?</Text>
+          <Text style={styles.sectionLabel}>What did you spend on? <Text style={styles.optionalLabel}>(optional)</Text></Text>
           <TextInput
             style={styles.descInput}
             value={description}
@@ -403,7 +406,7 @@ export default function ExpenseScreen() {
                   ? 'Log Expense ' + formatCurrency(parsedAmount)
                   : (!hasEnough && parsedAmount > 0
                       ? 'Insufficient Balance'
-                      : 'Fill in all fields')}
+                      : 'Enter amount & account')}
               </Text>
             </>
           )}
@@ -438,6 +441,7 @@ const styles = StyleSheet.create({
 
   section:            { marginBottom: 20 },
   sectionLabel:       { fontSize: 11, fontFamily: 'DMSans_600SemiBold', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  optionalLabel:      { fontSize: 10, fontFamily: 'DMSans_400Regular', color: '#CBD5E1', textTransform: 'none', letterSpacing: 0 },
   descInput:          { backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, fontSize: 16, fontFamily: 'DMSans_400Regular', color: Colors.text },
   catGrid:            { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   catBtn:             { backgroundColor: Colors.white, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border, minWidth: '30%' as any, flex: 1 },

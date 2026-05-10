@@ -259,7 +259,7 @@ export default function GoalsScreen() {
                     <Text style={styles.modalCurrency}>₱</Text>
                     <TextInput style={styles.modalInput} value={contributeAmount}
                       onChangeText={t => setContributeAmount(t.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00" placeholderTextColor={Colors.textTertiary}
+                      placeholder="0.0" placeholderTextColor={Colors.textTertiary}
                       keyboardType="decimal-pad" autoFocus />
                   </View>
                   {overGoal && (
@@ -314,7 +314,7 @@ export default function GoalsScreen() {
                     <Text style={styles.modalCurrency}>₱</Text>
                     <TextInput style={styles.modalInput} value={redeemAmount}
                       onChangeText={t => setRedeemAmount(t.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00" placeholderTextColor={Colors.textTertiary}
+                      placeholder="0.0" placeholderTextColor={Colors.textTertiary}
                       keyboardType="decimal-pad" autoFocus />
                   </View>
                   {val > redeemModal.currentAmount && (

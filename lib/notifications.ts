@@ -255,6 +255,22 @@ export async function notifyGoalBonus(
   );
 }
 
+
+// Called when student redeems a savings goal — notifies the guardian
+export async function notifyGoalRedeemed(
+  guardianUserId: string,
+  studentName: string,
+  amount: number,
+  goalName: string
+): Promise<void> {
+  await sendPushNotification(
+    guardianUserId,
+    '🏆 Goal Redeemed!',
+    `${studentName} redeemed ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} from their "${goalName}" goal.`,
+    { type: 'goal_redeemed', amount, goalName }
+  );
+}
+
 // Called when guardian wallet is low
 export async function notifyLowGuardianBalance(
   guardianUserId: string,

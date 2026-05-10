@@ -11,6 +11,7 @@ import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
 import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
+import AdBanner from '../../components/AdBanner';
 
 function formatCurrency(amount: number): string {
   return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -63,9 +64,7 @@ export default function StudentDashboard() {
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: async () => {
-          await logoutUser();
-        },
+        onPress: async () => { await logoutUser(); },
       },
     ]);
   };
@@ -98,9 +97,6 @@ export default function StudentDashboard() {
             <Text style={styles.headerSubtitle}>Your Allowance</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={() => { tap(); router.push('/changelog'); }} style={styles.whatsNewBtn}>
-              <Ionicons name="megaphone-outline" size={18} color="rgba(255,255,255,0.85)" />
-            </Pressable>
             <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
               <Text style={styles.avatarBtnText}>{(displayName || 'S')[0].toUpperCase()}</Text>
             </Pressable>
@@ -168,6 +164,11 @@ export default function StudentDashboard() {
             </View>
             <Text style={styles.actionText}>Cash Out</Text>
           </Pressable>
+        </Animated.View>
+
+        {/* ── Rotating Ad Banner ── */}
+        <Animated.View entering={FadeInDown.delay(340).duration(500)}>
+          <AdBanner />
         </Animated.View>
 
         {limitActive && (
@@ -268,10 +269,7 @@ export default function StudentDashboard() {
         </Animated.View>
       </ScrollView>
 
-      <BottomNav
-        userType="student"
-        onLogout={handleLogout}
-      />
+      <BottomNav userType="student" onLogout={handleLogout} />
 
       {showOnboarding && (
         <OnboardingTutorial
@@ -301,7 +299,7 @@ const styles = StyleSheet.create({
   lowBalanceAlertText: { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#FCD34D' },
   content: { flex: 1 },
   scrollContent: { padding: 24 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   actionBtn: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
   actionPressed: { opacity: 0.8, transform: [{ scale: 0.96 }] },
   actionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },

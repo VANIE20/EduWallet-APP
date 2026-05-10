@@ -153,7 +153,7 @@ export default function SpendingLimitScreen() {
                       style={styles.amountInput}
                       value={dailyLimit}
                       onChangeText={(t) => setDailyLimit(t.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00"
+                      placeholder="0.0"
                       placeholderTextColor={Colors.textTertiary}
                       keyboardType="decimal-pad"
                     />

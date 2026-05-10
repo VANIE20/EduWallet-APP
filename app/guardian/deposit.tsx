@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
-  Platform, KeyboardAvoidingView, ScrollView, Alert, Linking, ActivityIndicator,
+  Platform, KeyboardAvoidingView, ScrollView, Linking, ActivityIndicator,
   AppState, AppStateStatus,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Colors from '../../constants/colors';
+import ConfirmDialog, { DialogConfig } from '../../components/ConfirmDialog';
 import { useApp } from '../../lib/AppContext';
 
 const PAYMONGO_SECRET_KEY = 'sk_test_hv5EDbVcAJRG2jbDgDe2bMr3';
@@ -113,6 +114,7 @@ export default function DepositScreen() {
   const [amount, setAmount]         = useState('');
   const [method, setMethod]         = useState<PaymentMethod>('gcash');
   const [isSubmitting, setSubmit]   = useState(false);
+  const [dialog, setDialog]         = useState<DialogConfig | null>(null);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [statusMsg, setStatusMsg]   = useState('');     // shown under spinner
   const [showManual, setShowManual] = useState(false);  // "I've paid" button
@@ -166,22 +168,25 @@ export default function DepositScreen() {
       // Show the error prominently so user can contact support.
       setSubmit(false);
       setLoadingMsg('');
-      Alert.alert(
-        '⚠️ Save Failed',
-        `PayMongo confirmed your payment of ₱${paidAmt.toFixed(2)}, but we could not save it:\n\n${dbErr?.message ?? 'Unknown error'}\n\nPlease screenshot this and contact support.`,
-        [{ text: 'OK' }],
-      );
+      setDialog({
+        type: 'error',
+        title: 'Save Failed',
+        message: `PayMongo confirmed your payment of ₱${paidAmt.toFixed(2)}, but we could not save it: ${dbErr?.message ?? 'Unknown error'}. Please screenshot this and contact support.`,
+        confirmLabel: 'OK',
+      });
       return;
     }
 
     setSubmit(false);
     setLoadingMsg('');
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(
-      '✅ Deposit Successful!',
-      `₱${paidAmt.toFixed(2)} has been added to your wallet.`,
-      [{ text: 'Done', onPress: () => router.back() }],
-    );
+    setDialog({
+      type: 'success',
+      title: 'Deposit Successful',
+      message: `₱${paidAmt.toFixed(2)} has been added to your wallet and is ready to use.`,
+      confirmLabel: 'Done',
+      onConfirm: () => router.back(),
+    });
   }, []);
 
   // ── single poll cycle ────────────────────────────────────────────────────
@@ -195,11 +200,12 @@ export default function DepositScreen() {
     // Timeout
     if (pollCountRef.current > POLL_MAX) {
       resetState();
-      Alert.alert(
-        'Payment Timeout',
-        'We could not confirm your payment automatically.\n\nIf GCash/Maya was charged, tap "I\'ve Completed Payment" on the deposit screen.',
-        [{ text: 'OK' }],
-      );
+      setDialog({
+        type: 'info',
+        title: 'Payment Timeout',
+        message: "We could not confirm your payment automatically. If GCash/Maya was charged, tap \"I've Completed Payment\" on the deposit screen.",
+        confirmLabel: 'OK',
+      });
       return;
     }
 
@@ -222,7 +228,7 @@ export default function DepositScreen() {
 
       if (status === 'expired' || status === 'cancelled') {
         resetState();
-        Alert.alert('Session Ended', 'Your checkout session expired or was cancelled. Please try again.', [{ text: 'OK' }]);
+        setDialog({ type: 'error', title: 'Session Ended', message: 'Your checkout session expired or was cancelled. Please try again.', confirmLabel: 'OK' });
         return;
       }
 
@@ -267,7 +273,7 @@ export default function DepositScreen() {
         kickPoll();
       } else if (status === 'cancel') {
         resetState();
-        Alert.alert('Payment Cancelled', 'You cancelled the payment.', [{ text: 'OK' }]);
+        setDialog({ type: 'info', title: 'Payment Cancelled', message: 'You cancelled the payment.', confirmLabel: 'OK' });
       }
     };
 
@@ -302,7 +308,7 @@ export default function DepositScreen() {
   const handleDeposit = async () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) return;
-    if (val < 20) { Alert.alert('Minimum amount', 'Minimum deposit is ₱20.'); return; }
+    if (val < 20) { setDialog({ type: 'info', title: 'Minimum Amount', message: 'Minimum deposit is ₱20.', confirmLabel: 'OK' }); return; }
 
     setSubmit(true);
     setLoadingMsg('Creating checkout session…');
@@ -327,12 +333,12 @@ export default function DepositScreen() {
 
     } catch (e: any) {
       resetState();
-      Alert.alert('Error', e.message || 'Something went wrong. Please try again.');
+      setDialog({ type: 'error', title: 'Error', message: e.message || 'Something went wrong. Please try again.', confirmLabel: 'OK' });
     }
   };
 
   const handleCancel = () => {
-    Alert.alert('Cancel Payment?', 'Stop waiting for this deposit?', [
+    setDialog({ type: 'confirm', title: 'Cancel Payment?', message: 'Stop waiting for this deposit?', confirmLabel: 'Stop', cancelLabel: 'Keep Waiting', onConfirm: () => { resetState(); }, onCancel: () => {} }); void ([
       { text: 'Keep Waiting', style: 'cancel' },
       { text: 'Yes, Cancel', style: 'destructive', onPress: resetState },
     ]);
@@ -364,7 +370,7 @@ export default function DepositScreen() {
               style={[styles.amountInput, isValid && styles.amountInputActive]}
               value={amount}
               onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-              placeholder="0.00"
+              placeholder="0.0"
               placeholderTextColor="#94A3B8"
               keyboardType="decimal-pad"
               autoFocus

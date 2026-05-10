@@ -152,7 +152,7 @@ export default function ScheduleScreen() {
                   style={styles.amountInput}
                   value={amount}
                   onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-                  placeholder="0.00"
+                  placeholder="0.0"
                   placeholderTextColor={Colors.textTertiary}
                   keyboardType="decimal-pad"
                 />

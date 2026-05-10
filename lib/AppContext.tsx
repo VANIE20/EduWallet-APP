@@ -14,6 +14,7 @@ import {
   notifySpendingLimitWarning,
   notifyLowGuardianBalance,
   notifyGoalBonus,
+  notifyGoalRedeemed,
 } from './notifications';
 
 // Low balance threshold — notify guardian when wallet drops below this
@@ -511,7 +512,23 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     const goal = savingsGoals.find(g => g.id === goalId);
     if (!goal || goal.isLocked) return false;
     const success = await Storage.redeemGoal(goalId, amount, goal.name);
-    if (success) await refreshData(selectedStudentIdRef.current ?? undefined);
+    if (success) {
+      await refreshData(selectedStudentIdRef.current ?? undefined);
+      // Notify guardian that the student redeemed a goal
+      try {
+        const user = await Storage.getLoggedInUser();
+        if (user && user.linkedUserIds?.length) {
+          await notifyGoalRedeemed(
+            user.linkedUserIds[0],
+            user.displayName,
+            amount,
+            goal.name,
+          );
+        }
+      } catch (e) {
+        console.warn('Goal redeem notification failed:', e);
+      }
+    }
     return success;
   }, [savingsGoals, refreshData]);
 
