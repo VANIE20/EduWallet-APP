@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { router } from 'expo-router';
 import * as Storage from './storage';
 import { supabase } from './supabase';
 import type { UserRole, AllowanceConfig, Transaction, SavingsGoal, LoggedInUser, SpendingLimit } from './storage';
@@ -84,6 +85,15 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     selectedStudentIdRef.current = selectedStudentId;
   }, [selectedStudentId]);
 
+  // Prevents concurrent executions of the onAuthStateChange handler.
+  // Without this, a SIGNED_IN event can start processing while a SIGNED_OUT
+  // handler is still awaiting (e.g. removePushToken), causing race conditions.
+  const authHandlerLockRef = useRef(false);
+  // Tracks the session user ID that was last fully loaded so we can skip
+  // redundant SIGNED_IN events for the same user (e.g. triggered by Supabase
+  // token operations or push notification upserts).
+  const lastLoadedSessionIdRef = useRef<string | null>(null);
+
   const todaySpent = useMemo(() => Storage.getTodaySpent(transactions), [transactions]);
 
   const refreshData = useCallback(async (studentId?: string) => {
@@ -118,8 +128,19 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        const hasValidSession = !!session?.user;
+        const sessionUserId = session?.user?.id ?? null;
+
+        console.log('[AppContext] onAuthStateChange:', event, 'userId:', sessionUserId ?? 'none');
+
+        // ── SIGNED_OUT: clear state and navigate to login ─────────────────
+        // Note: removePushToken() is done in logoutUser() BEFORE signOut() is
+        // called, so we don't need to do it here (and doing it here caused a
+        // race because getExpoPushTokenAsync is slow and the next SIGNED_IN
+        // would start before this finished).
         if (event === 'SIGNED_OUT') {
-          await removePushToken();
+          authHandlerLockRef.current = false;
+          lastLoadedSessionIdRef.current = null;
           await Storage.setLoggedInUser(null);
           setLoggedInUserState(null);
           setRole(null);
@@ -129,66 +150,128 @@ function AppProviderInner({ children }: { children: ReactNode }) {
           selectedStudentIdRef.current = null;
           setNeedsOTP(false);
           setIsLoading(false);
+          router.replace('/login');
           return;
         }
 
-        const hasValidSession = !!session?.user;
-        if (hasValidSession || event !== 'INITIAL_SESSION') {
-          console.log('[AppContext] onAuthStateChange:', event, 'hasValidSession:', hasValidSession);
+        // ── TOKEN_REFRESHED: no work needed ──────────────────────────────
+        if (event === 'TOKEN_REFRESHED') {
+          setIsLoading(false);
+          return;
         }
 
-        let user = await Storage.getLoggedInUser();
-        console.log('[AppContext] getLoggedInUser result:', user ? `id=${user.id} role=${user.role} isLinked=${user.isLinked}` : 'NULL');
+        // ── Deduplicate: skip if this SIGNED_IN is for the same session ──
+        // registerForPushNotifications() writes to Supabase which can
+        // trigger a second SIGNED_IN for the same user — skip it.
+        if (event === 'SIGNED_IN' && sessionUserId && sessionUserId === lastLoadedSessionIdRef.current) {
+          console.log('[AppContext] Skipping duplicate SIGNED_IN for already-loaded user');
+          setIsLoading(false);
+          return;
+        }
 
-        if (!user && hasValidSession && session?.user) {
-          console.log('[AppContext] AsyncStorage empty but session valid — rebuilding user from session');
-          const rebuilt = await Storage.signInFromSession(session.user);
-          if (rebuilt) {
-            user = rebuilt;
-            console.log('[AppContext] rebuilt user:', user.id, 'role:', user.role);
+        // ── Serialize: only one handler runs at a time ───────────────────
+        // If the previous handler is still running (e.g. SIGNED_OUT is still
+        // awaiting removePushToken), wait for it to finish before proceeding.
+        if (authHandlerLockRef.current) {
+          console.log('[AppContext] Handler already running — queuing', event);
+          // Poll until the lock is free (max 8 seconds)
+          const start = Date.now();
+          while (authHandlerLockRef.current && Date.now() - start < 8000) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+          // After waiting, re-check if this event is still relevant
+          if (event === 'SIGNED_IN' && sessionUserId && sessionUserId === lastLoadedSessionIdRef.current) {
+            console.log('[AppContext] After wait: already loaded, skipping', event);
+            setIsLoading(false);
+            return;
           }
         }
 
-        if (user && hasValidSession) {
-          const freshUser = await Storage.refreshUserLinkStatus(user);
-          setLoggedInUserState(freshUser);
-          setRole(freshUser.role);
-          setIsLinked(freshUser.isLinked || (freshUser.linkedUserIds?.length ?? 0) > 0);
+        authHandlerLockRef.current = true;
 
-          const otpRequired = await shouldRequireOTP();
-          setNeedsOTP(otpRequired);
-          if (!otpRequired) {
-            await updateLastActive();
+        // ── Wrap everything in try/finally so isLoading ALWAYS clears ────
+        try {
+          let user = await Storage.getLoggedInUser();
+          console.log('[AppContext] getLoggedInUser result:', user ? `id=${user.id} role=${user.role}` : 'NULL');
+
+          // If the cached user is for a DIFFERENT account than the new session,
+          // wipe all in-memory state before rebuilding. This stops the previous
+          // account's data leaking into the new login.
+          if (user && hasValidSession && sessionUserId && user.id !== sessionUserId) {
+            console.log('[AppContext] Account switch detected — clearing old state');
+            setGuardianBalance(0);
+            setStudentBalance(0);
+            setAllowanceConfigState(null);
+            setTransactions([]);
+            setSavingsGoalsState([]);
+            setSpendingLimitState(null);
+            setLinkedStudents([]);
+            setSelectedStudentId(null);
+            selectedStudentIdRef.current = null;
+            lastLoadedSessionIdRef.current = null;
+            await Storage.setLoggedInUser(null);
+            user = null;
           }
 
-          // Register push notifications after login
-          await registerForPushNotifications();
-
-          if (freshUser.role === 'guardian') {
-            const students = await Storage.getLinkedStudents();
-            setLinkedStudents(students);
-            if (students.length > 0 && !selectedStudentIdRef.current) {
-              const firstId = students[0].id;
-              setSelectedStudentId(firstId);
-              selectedStudentIdRef.current = firstId;
-              await refreshData(firstId);
-            } else {
-              await refreshData(selectedStudentIdRef.current ?? undefined);
+          // Rebuild from session if AsyncStorage is empty but Supabase has a session
+          if (!user && hasValidSession && session?.user) {
+            console.log('[AppContext] Rebuilding user from session');
+            const rebuilt = await Storage.signInFromSession(session.user);
+            if (rebuilt) {
+              user = rebuilt;
+              console.log('[AppContext] Rebuilt:', user.id, 'role:', user.role);
             }
-          } else {
-            await refreshData();
           }
 
-          await Storage.processAllowance();
-          await refreshData(selectedStudentIdRef.current ?? undefined);
-        } else if (event !== 'INITIAL_SESSION' || !hasValidSession) {
-          await Storage.setLoggedInUser(null);
-          setLoggedInUserState(null);
-          setRole(null);
-          setIsLinked(false);
-          setNeedsOTP(false);
+          if (user && hasValidSession) {
+            const freshUser = await Storage.refreshUserLinkStatus(user);
+            setLoggedInUserState(freshUser);
+            setRole(freshUser.role);
+            setIsLinked(freshUser.isLinked || (freshUser.linkedUserIds?.length ?? 0) > 0);
+
+            const otpRequired = await shouldRequireOTP();
+            setNeedsOTP(otpRequired);
+            if (!otpRequired) await updateLastActive();
+
+            // Mark this session as fully loaded BEFORE registerForPushNotifications
+            // so the SIGNED_IN it may trigger gets deduped above.
+            lastLoadedSessionIdRef.current = sessionUserId;
+
+            // Fire-and-forget push registration — do NOT await it inside the
+            // handler because the Supabase upsert it does can trigger another
+            // SIGNED_IN event (which we now skip via lastLoadedSessionIdRef).
+            registerForPushNotifications().catch(() => {});
+
+            if (freshUser.role === 'guardian') {
+              const students = await Storage.getLinkedStudents();
+              setLinkedStudents(students);
+              if (students.length > 0 && !selectedStudentIdRef.current) {
+                const firstId = students[0].id;
+                setSelectedStudentId(firstId);
+                selectedStudentIdRef.current = firstId;
+                await refreshData(firstId);
+              } else {
+                await refreshData(selectedStudentIdRef.current ?? undefined);
+              }
+            } else {
+              await refreshData();
+            }
+
+            await Storage.processAllowance();
+            await refreshData(selectedStudentIdRef.current ?? undefined);
+          } else if (event !== 'INITIAL_SESSION' || !hasValidSession) {
+            await Storage.setLoggedInUser(null);
+            setLoggedInUserState(null);
+            setRole(null);
+            setIsLinked(false);
+            setNeedsOTP(false);
+          }
+        } catch (err) {
+          console.error('[AppContext] onAuthStateChange error:', err);
+        } finally {
+          authHandlerLockRef.current = false;
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     );
     return () => { subscription.unsubscribe(); };
@@ -222,13 +305,29 @@ function AppProviderInner({ children }: { children: ReactNode }) {
   }, [loggedInUser, refreshData]);
 
   const logoutUser = useCallback(async () => {
-    await removePushToken();
-    await Storage.signOut();
+    // 1. Remove push token FIRST, while the session is still valid.
+    //    We must do this before signOut() because after SIGNED_OUT fires
+    //    the session is gone and the Supabase delete would fail with RLS.
+    //    Also set the lastLoaded ref to null so the upcoming SIGNED_OUT
+    //    handler doesn't treat it as a duplicate.
+    lastLoadedSessionIdRef.current = null;
+    try { await removePushToken(); } catch { /* ignore */ }
+
+    // 2. Clear all local state immediately so the UI reacts right away.
     setLoggedInUserState(null);
     setRole(null);
+    setIsLinked(false);
     setLinkedStudents([]);
     setSelectedStudentId(null);
     selectedStudentIdRef.current = null;
+    setNeedsOTP(false);
+
+    // 3. Navigate to login immediately — don't wait for the SIGNED_OUT event.
+    router.replace('/login');
+
+    // 4. Sign out of Supabase in the background. The SIGNED_OUT event will
+    //    fire but our handler is a no-op (state already cleared above).
+    try { await Storage.signOut(); } catch { /* ignore */ }
   }, []);
 
   const setUserRole = useCallback(async (newRole: UserRole) => {

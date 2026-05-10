@@ -1039,9 +1039,14 @@ export async function refreshUserLinkStatus(user: LoggedInUser): Promise<LoggedI
     console.log('[refreshUserLinkStatus] linkedUserIds found:', linkedUserIds);
     console.log('[refreshUserLinkStatus] freshDisplayName chosen:', freshDisplayName);
 
+    // Use the role from the fresh DB profile so we never keep a stale/wrong role
+    // (e.g. a student seeing the guardian dashboard because an old role was cached).
+    const freshRole = (freshProfile?.role as UserRole) || user.role;
+
     const updatedUser: LoggedInUser = {
       ...user,
       displayName: freshDisplayName,
+      role: freshRole,
       linkedUserIds,
       isLinked: linkedUserIds.length > 0,
     };
@@ -1445,13 +1450,18 @@ export async function getSavingsGoals(studentId?: string): Promise<SavingsGoal[]
   const user = await getLoggedInUser();
   if (!user) return [];
 
-  let targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
-  if (!targetStudentId) return [];
+  const rawId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawId) return [];
+
+  // Resolve auth UUID → profile table UUID (same as getStudentWallet / getTransactions)
+  const resolvedId = await resolveProfileId(rawId);
+  // Query with both IDs in case the row was inserted with either UUID
+  const candidateIds = [...new Set([rawId, resolvedId].filter(Boolean) as string[])];
 
   const { data, error } = await supabase
     .from('savings_goals')
     .select('*')
-    .eq('student_id', targetStudentId)
+    .in('student_id', candidateIds)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1508,8 +1518,11 @@ export async function insertSavingsGoal(goal: SavingsGoal, studentId?: string): 
   const user = await getLoggedInUser();
   if (!user) return false;
 
-  const targetStudentId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
-  if (!targetStudentId) return false;
+  const rawId = studentId || (user.role === 'student' ? user.id : user.linkedUserIds[0]);
+  if (!rawId) return false;
+
+  // Resolve auth UUID → profile table UUID so the row is inserted with the correct FK
+  const targetStudentId = (await resolveProfileId(rawId)) ?? rawId;
 
   const { error } = await supabase
     .from('savings_goals')

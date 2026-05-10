@@ -1,34 +1,43 @@
+// EduWallet Color System
+// Guardian theme: red/crimson  |  Student theme: blue/indigo
+
 const Colors = {
-  // Primary brand
-  primary: '#9B1C1C',
-  primaryLight: '#FFF7ED',
-  accent: '#F59E0B',
+  // ── Brand ───────────────────────────────────────────────────────────────
+  primary:              '#b12414',   // guardian red
+  primaryLight:         '#FEF2F2',   // guardian red tint bg
 
   // Guardian gradient
-  guardianGradientStart: '#9B1C1C',
-  guardianGradientEnd: '#F59E0B',
+  guardianGradientStart: '#b12414',
+  guardianGradientEnd:   '#d55a13',
 
-  // Status
-  success: '#10B981',
-  danger: '#EF4444',
-  dangerLight: '#FEE2E2',
-  warning: '#F59E0B',
+  // Student theme (blue)
+  studentPrimary:       '#b12414',
+  studentGradientStart: '#b12414',
+  studentGradientEnd:   '#d55a13',
+  studentPrimaryLight:  '#EEF2FF',
 
-  // Backgrounds
-  background: '#FFFFFF',
-  backgroundSecondary: '#FFF7ED',
-  surfaceAlt: '#FFFFFF',
-  overlay: 'rgba(0, 0, 0, 0.4)',
+  // ── Semantic ─────────────────────────────────────────────────────────────
+  success:              '#16A34A',
+  danger:               '#DC2626',
+  dangerLight:          '#FEF2F2',
+  warning:              '#D97706',
+  accent:               '#F59E0B',
 
-  // Text
-  text: '#111827',
-  textSecondary: '#6B7280',
-  textTertiary: '#9CA3AF',
+  // ── Neutrals ─────────────────────────────────────────────────────────────
+  white:                '#FFFFFF',
+  background:           '#F8FAFC',
+  backgroundSecondary:  '#F1F5F9',
+  surfaceAlt:           '#F8FAFC',
+  border:               '#E2E8F0',
+  overlay:              'rgba(0,0,0,0.4)',
 
-  // UI
-  white: '#FFFFFF',
-  border: '#E5E7EB',
-  cardShadow: 'rgba(0, 0, 0, 0.06)',
+  // ── Text ─────────────────────────────────────────────────────────────────
+  text:                 '#1E293B',
+  textSecondary:        '#64748B',
+  textTertiary:         '#94A3B8',
+
+  // ── Misc ─────────────────────────────────────────────────────────────────
+  cardShadow:           'rgba(0,0,0,0.08)',
 };
 
 export default Colors;

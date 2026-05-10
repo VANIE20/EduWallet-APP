@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, Alert, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,16 +28,14 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function GuardianDashboard() {
+export default function StudentDashboard() {
   const insets = useSafeAreaInsets();
   const {
-    loggedInUser, isLinked, guardianBalance, studentBalance,
-    allowanceConfig, spendingLimit, transactions, todaySpent,
+    loggedInUser, studentBalance, spendingLimit,
+    transactions, todaySpent, savingsGoals,
     refreshData, logoutUser, setLoggedInUser,
-    linkedStudents, selectedStudentId, selectStudent,
   } = useApp();
   const [localDisplayName, setLocalDisplayName] = useState<string>('');
-  const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
@@ -51,9 +49,9 @@ export default function GuardianDashboard() {
     shouldShowOnboarding().then(show => setShowOnboarding(show));
   }, [refreshData]);
 
-  const guardianTransactions = transactions.filter(
-    t => t.type === 'deposit' || t.type === 'allowance'
-  ).slice(0, 5);
+  const recentTransactions = transactions
+    .filter(t => t.type === 'expense' || t.type === 'allowance')
+    .slice(0, 5);
 
   const tap = () => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -67,21 +65,29 @@ export default function GuardianDashboard() {
         style: 'destructive',
         onPress: async () => {
           await logoutUser();
-          router.replace('/login');
         },
       },
     ]);
   };
 
   const displayName = loggedInUser?.displayName || localDisplayName || 'there';
-  const selectedStudent = linkedStudents.find(s => s.id === selectedStudentId);
-  const selectedStudentName = selectedStudent?.displayName || 'Student';
-  const hasMultipleStudents = linkedStudents.length > 1;
+
+  const limitActive = spendingLimit?.isActive && (spendingLimit?.dailyLimit ?? 0) > 0;
+  const limitUsedPercent = limitActive
+    ? Math.min(todaySpent / (spendingLimit!.dailyLimit), 1)
+    : 0;
+  const limitRemaining = limitActive
+    ? Math.max((spendingLimit!.dailyLimit) - todaySpent, 0)
+    : 0;
+
+  const activeGoals = savingsGoals.filter(g => g.currentAmount < g.targetAmount).slice(0, 2);
+  const totalSaved = savingsGoals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
+  const savingsGoalCount = savingsGoals.length;
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[Colors.guardianGradientStart, Colors.guardianGradientEnd]}
+        colors={[Colors.studentGradientStart, Colors.studentGradientEnd]}
         style={[styles.headerGradient, { paddingTop: Platform.OS === 'web' ? 67 : insets.top + 16 }]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -89,48 +95,42 @@ export default function GuardianDashboard() {
         <View style={styles.headerRow}>
           <View style={styles.headerCenter}>
             <Text style={styles.greeting}>Hi, {displayName}!</Text>
-            <Text style={styles.headerSubtitle}>Wallet Overview</Text>
+            <Text style={styles.headerSubtitle}>Your Allowance</Text>
           </View>
           <View style={styles.headerActions}>
             <Pressable onPress={() => { tap(); router.push('/changelog'); }} style={styles.whatsNewBtn}>
               <Ionicons name="megaphone-outline" size={18} color="rgba(255,255,255,0.85)" />
             </Pressable>
             <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
-              <Text style={styles.avatarBtnText}>{(displayName || 'U')[0].toUpperCase()}</Text>
+              <Text style={styles.avatarBtnText}>{(displayName || 'S')[0].toUpperCase()}</Text>
             </Pressable>
           </View>
         </View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Your Wallet</Text>
-          <Text style={styles.balanceAmount}>{formatCurrency(guardianBalance)}</Text>
-
-          {/* Student balance row — tappable switcher if multiple students */}
-          <Pressable
-            style={styles.studentBalanceRow}
-            onPress={() => hasMultipleStudents && setStudentPickerOpen(true)}
-            disabled={!hasMultipleStudents}
-          >
-            <Ionicons name="school-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.studentBalanceText}>
-              {selectedStudentName}: {formatCurrency(studentBalance)}
-            </Text>
-            {hasMultipleStudents && (
-              <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.7)" />
-            )}
-          </Pressable>
-
-          {studentBalance <= 10 && studentBalance > 0 && (
+          <Text style={styles.balanceLabel}>My Balance</Text>
+          <Text style={styles.balanceAmount}>{formatCurrency(studentBalance)}</Text>
+          {studentBalance <= 20 && studentBalance > 0 && (
             <View style={styles.lowBalanceAlert}>
               <Ionicons name="warning-outline" size={13} color="#FCD34D" />
-              <Text style={styles.lowBalanceAlertText}>Student balance is low</Text>
+              <Text style={styles.lowBalanceAlertText}>Your balance is getting low</Text>
             </View>
           )}
           {studentBalance === 0 && (
             <View style={styles.lowBalanceAlert}>
               <Ionicons name="alert-circle-outline" size={13} color="#FCD34D" />
-              <Text style={[styles.lowBalanceAlertText, { color: '#FCD34D' }]}>Student has no balance</Text>
+              <Text style={[styles.lowBalanceAlertText, { color: '#FCD34D' }]}>No balance — ask your guardian!</Text>
             </View>
+          )}
+          {savingsGoalCount > 0 && (
+            <Pressable onPress={() => { tap(); router.push('/student/goals'); }} style={styles.savingsPill}>
+              <Ionicons name="trending-up" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.savingsPillText}>
+                Savings: <Text style={styles.savingsPillAmount}>{formatCurrency(totalSaved)}</Text>
+                <Text style={styles.savingsPillSub}> across {savingsGoalCount} goal{savingsGoalCount !== 1 ? 's' : ''}</Text>
+              </Text>
+              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.6)" />
+            </Pressable>
           )}
         </Animated.View>
       </LinearGradient>
@@ -141,149 +141,126 @@ export default function GuardianDashboard() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.actionsRow}>
-          <Pressable onPress={() => { tap(); router.push('/guardian/deposit'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#DCFCE7' }]}>
-              <Ionicons name="add-circle" size={24} color="#16A34A" />
-            </View>
-            <Text style={styles.actionText}>Deposit</Text>
-          </Pressable>
-
-          <Pressable onPress={() => { tap(); router.push('/guardian/send'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="send" size={22} color="#D97706" />
-            </View>
-            <Text style={styles.actionText}>Send</Text>
-          </Pressable>
-
-          <Pressable onPress={() => { tap(); router.push('/guardian/schedule'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Ionicons name="calendar" size={22} color="#9B1C1C" />
-            </View>
-            <Text style={styles.actionText}>Schedule</Text>
-          </Pressable>
-
-          <Pressable onPress={() => { tap(); router.push('/guardian/spending-limit'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
+          <Pressable onPress={() => { tap(); router.push('/student/expense'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
             <View style={[styles.actionIcon, { backgroundColor: '#FEE2E2' }]}>
-              <Ionicons name="shield" size={22} color="#EF4444" />
+              <Ionicons name="cart" size={24} color="#DC2626" />
             </View>
-            <Text style={styles.actionText}>Limit</Text>
+            <Text style={styles.actionText}>Spend</Text>
+          </Pressable>
+
+          <Pressable onPress={() => { tap(); router.push('/student/goals'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#DCFCE7' }]}>
+              <Ionicons name="flag" size={22} color="#16A34A" />
+            </View>
+            <Text style={styles.actionText}>Goals</Text>
+          </Pressable>
+
+          <Pressable onPress={() => { tap(); router.push('/student/history'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#E0E7FF' }]}>
+              <Ionicons name="time" size={22} color="#4F46E5" />
+            </View>
+            <Text style={styles.actionText}>History</Text>
+          </Pressable>
+
+          <Pressable onPress={() => { tap(); router.push('/student/cashout'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="cash" size={22} color="#D97706" />
+            </View>
+            <Text style={styles.actionText}>Cash Out</Text>
           </Pressable>
         </Animated.View>
 
-        {/* Invite banner — always visible so guardian can add more students */}
-        <Animated.View entering={FadeInDown.delay(320).duration(500)}>
-          <Pressable onPress={() => { tap(); router.push('/guardian/invite-student'); }} style={styles.linkBanner}>
-            <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
-            <Text style={styles.linkBannerText}>
-              {isLinked ? 'Add another student' : 'No student linked yet — tap to invite one'}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-          </Pressable>
-        </Animated.View>
+        {limitActive && (
+          <Animated.View entering={FadeInDown.delay(350).duration(500)} style={styles.limitCard}>
+            <View style={styles.limitHeader}>
+              <Ionicons name="shield-checkmark" size={18} color="#D97706" />
+              <Text style={styles.limitTitle}>Daily Spending Limit</Text>
+              <Text style={styles.limitSubtitle}>{formatCurrency(spendingLimit!.dailyLimit)}/day</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, {
+                width: `${limitUsedPercent * 100}%` as any,
+                backgroundColor: limitUsedPercent >= 1 ? '#DC2626' : limitUsedPercent >= 0.8 ? '#D97706' : '#16A34A',
+              }]} />
+            </View>
+            <View style={styles.limitRow}>
+              <Text style={styles.limitSpent}>Spent: {formatCurrency(todaySpent)}</Text>
+              <Text style={[styles.limitLeft, { color: limitRemaining === 0 ? '#DC2626' : '#16A34A' }]}>
+                Left: {formatCurrency(limitRemaining)}
+              </Text>
+            </View>
+          </Animated.View>
+        )}
 
-        {/* Linked students list (only when more than 1) */}
-        {linkedStudents.length > 1 && (
-          <Animated.View entering={FadeInDown.delay(330).duration(500)} style={styles.studentsCard}>
-            <Text style={styles.studentsCardTitle}>Linked Students</Text>
-            {linkedStudents.map(student => (
-              <Pressable
-                key={student.id}
-                onPress={() => { tap(); selectStudent(student.id); }}
-                style={[styles.studentRow, student.id === selectedStudentId && styles.studentRowActive]}
-              >
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
-                </View>
-                <Text style={[styles.studentName, student.id === selectedStudentId && styles.studentNameActive]}>
-                  {student.displayName}
-                </Text>
-                {student.id === selectedStudentId && (
-                  <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />
-                )}
+        {activeGoals.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.goalsCard}>
+            <View style={styles.goalsHeader}>
+              <Text style={styles.goalsTitle}>My Goals</Text>
+              <Pressable onPress={() => router.push('/student/goals')}>
+                <Text style={styles.seeAll}>See All</Text>
               </Pressable>
-            ))}
-          </Animated.View>
-        )}
-
-        {spendingLimit && spendingLimit.isActive && spendingLimit.dailyLimit > 0 && (
-          <Animated.View entering={FadeInDown.delay(350).duration(500)}>
-            <Pressable onPress={() => router.push('/guardian/spending-limit')} style={styles.limitCard}>
-              <View style={styles.limitHeader}>
-                <Ionicons name="shield-checkmark" size={20} color="#D97706" />
-                <Text style={styles.limitTitle}>Daily Spending Limit — {selectedStudentName}</Text>
-              </View>
-              <View style={styles.limitDetails}>
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Limit</Text>
-                  <Text style={styles.limitValue}>{formatCurrency(spendingLimit.dailyLimit)}</Text>
-                </View>
-                <View style={styles.limitDivider} />
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Spent Today</Text>
-                  <Text style={[styles.limitValue, { color: todaySpent >= spendingLimit.dailyLimit ? Colors.danger : Colors.text }]}>
-                    {formatCurrency(todaySpent)}
-                  </Text>
-                </View>
-                <View style={styles.limitDivider} />
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Remaining</Text>
-                  <Text style={[styles.limitValue, { color: Colors.success }]}>
-                    {formatCurrency(Math.max(spendingLimit.dailyLimit - todaySpent, 0))}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          </Animated.View>
-        )}
-
-        {allowanceConfig && allowanceConfig.isActive && (
-          <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.scheduleCard}>
-            <View style={styles.scheduleHeader}>
-              <Ionicons name="time" size={20} color={Colors.primary} />
-              <Text style={styles.scheduleTitle}>Auto-Allowance — {selectedStudentName}</Text>
             </View>
-            <View style={styles.scheduleDetails}>
-              <View style={styles.scheduleItem}>
-                <Text style={styles.scheduleLabel}>Amount</Text>
-                <Text style={styles.scheduleValue}>{formatCurrency(allowanceConfig.amount)}</Text>
-              </View>
-              <View style={styles.scheduleDivider} />
-              <View style={styles.scheduleItem}>
-                <Text style={styles.scheduleLabel}>Frequency</Text>
-                <Text style={styles.scheduleValue}>{allowanceConfig.frequency}</Text>
-              </View>
-            </View>
+            {activeGoals.map(goal => {
+              const pct = goal.targetAmount > 0 ? Math.min(goal.currentAmount / goal.targetAmount, 1) : 0;
+              return (
+                <Pressable key={goal.id} onPress={() => { tap(); router.push('/student/goals'); }} style={styles.goalRow}>
+                  <View style={styles.goalIconBox}>
+                    <Ionicons name={(goal.iconName as any) || 'star'} size={20} color={Colors.studentPrimary} />
+                  </View>
+                  <View style={styles.goalInfo}>
+                    <Text style={styles.goalName}>{goal.name}</Text>
+                    <View style={styles.goalProgress}>
+                      <View style={styles.goalTrack}>
+                        <View style={[styles.goalFill, { width: `${pct * 100}%` as any }]} />
+                      </View>
+                      <Text style={styles.goalPct}>{Math.round(pct * 100)}%</Text>
+                    </View>
+                    <Text style={styles.goalAmounts}>
+                      {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </Animated.View>
         )}
 
         <Animated.View entering={FadeInDown.delay(500).duration(500)}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Activity</Text>
-            {guardianTransactions.length > 0 && (
-              <Pressable onPress={() => router.push('/guardian/history')}>
+            {recentTransactions.length > 0 && (
+              <Pressable onPress={() => router.push('/student/history')}>
                 <Text style={styles.seeAll}>See All</Text>
               </Pressable>
             )}
           </View>
 
-          {guardianTransactions.length === 0 ? (
+          {recentTransactions.length === 0 ? (
             <View style={styles.emptyState}>
               <Feather name="inbox" size={40} color={Colors.textTertiary} />
-              <Text style={styles.emptyText}>No transactions yet</Text>
-              <Text style={styles.emptySubtext}>Deposit funds to get started</Text>
+              <Text style={styles.emptyText}>No activity yet</Text>
+              <Text style={styles.emptySubtext}>Your transactions will appear here</Text>
             </View>
           ) : (
-            guardianTransactions.map((tx) => (
+            recentTransactions.map((tx) => (
               <View key={tx.id} style={styles.txRow}>
-                <View style={[styles.txIcon, { backgroundColor: tx.type === 'deposit' ? '#DCFCE7' : '#FEF3C7' }]}>
-                  <Ionicons name={tx.type === 'deposit' ? 'arrow-down' : 'arrow-up'} size={18} color={tx.type === 'deposit' ? '#16A34A' : '#D97706'} />
+                <View style={[styles.txIcon, {
+                  backgroundColor: tx.type === 'allowance' ? '#DCFCE7' : '#FEE2E2',
+                }]}>
+                  <Ionicons
+                    name={tx.type === 'allowance' ? 'arrow-down' : 'arrow-up'}
+                    size={18}
+                    color={tx.type === 'allowance' ? '#16A34A' : '#DC2626'}
+                  />
                 </View>
                 <View style={styles.txInfo}>
                   <Text style={styles.txDesc}>{tx.description}</Text>
                   <Text style={styles.txDate}>{formatDate(tx.date)}</Text>
                 </View>
-                <Text style={[styles.txAmount, { color: tx.type === 'deposit' ? '#16A34A' : '#D97706' }]}>
-                  {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
+                <Text style={[styles.txAmount, {
+                  color: tx.type === 'allowance' ? '#16A34A' : '#DC2626',
+                }]}>
+                  {tx.type === 'allowance' ? '+' : '-'}{formatCurrency(tx.amount)}
                 </Text>
               </View>
             ))
@@ -291,48 +268,14 @@ export default function GuardianDashboard() {
         </Animated.View>
       </ScrollView>
 
-      {/* Student picker modal */}
-      <Modal
-        visible={studentPickerOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setStudentPickerOpen(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setStudentPickerOpen(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Select Student</Text>
-            {linkedStudents.map(student => (
-              <Pressable
-                key={student.id}
-                onPress={() => {
-                  tap();
-                  selectStudent(student.id);
-                  setStudentPickerOpen(false);
-                }}
-                style={[styles.modalStudentRow, student.id === selectedStudentId && styles.modalStudentRowActive]}
-              >
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
-                </View>
-                <Text style={styles.modalStudentName}>{student.displayName}</Text>
-                {student.id === selectedStudentId && (
-                  <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
-
       <BottomNav
-        userType="guardian"
+        userType="student"
         onLogout={handleLogout}
       />
 
       {showOnboarding && (
         <OnboardingTutorial
-          role="guardian"
+          role="student"
           onComplete={() => setShowOnboarding(false)}
         />
       )}
@@ -347,16 +290,14 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1 },
   greeting: { fontSize: 22, fontFamily: 'DMSans_700Bold', color: Colors.white },
   headerSubtitle: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  headerActions:          { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  whatsNewBtn:            { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  whatsNewBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   avatarBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   avatarBtnText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.white },
   balanceCard: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 20, padding: 24 },
   balanceLabel: { fontSize: 14, fontFamily: 'DMSans_500Medium', color: 'rgba(255,255,255,0.7)', marginBottom: 4 },
-  balanceAmount: { fontSize: 40, fontFamily: 'DMSans_700Bold', color: Colors.white, marginBottom: 12 },
-  studentBalanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  studentBalanceText: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)' },
-  lowBalanceAlert: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  balanceAmount: { fontSize: 40, fontFamily: 'DMSans_700Bold', color: Colors.white, marginBottom: 8 },
+  lowBalanceAlert: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   lowBalanceAlertText: { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#FCD34D' },
   content: { flex: 1 },
   scrollContent: { padding: 24 },
@@ -365,35 +306,30 @@ const styles = StyleSheet.create({
   actionPressed: { opacity: 0.8, transform: [{ scale: 0.96 }] },
   actionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   actionText: { fontSize: 12, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
-  linkBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primaryLight, borderRadius: 14, padding: 16, marginBottom: 20, gap: 10, borderWidth: 1, borderColor: Colors.primary },
-  linkBannerText: { flex: 1, fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.primary },
-  studentsCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 16, marginBottom: 20, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
-  studentsCardTitle: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12 },
-  studentRowActive: { backgroundColor: Colors.primaryLight },
-  studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  studentAvatarText: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
-  studentName: { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.text },
-  studentNameActive: { fontFamily: 'DMSans_600SemiBold', color: Colors.primary },
-  limitCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 20, marginBottom: 24, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3, borderLeftWidth: 4, borderLeftColor: '#D97706' },
-  limitHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  limitTitle: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: '#D97706', flex: 1 },
-  limitDetails: { flexDirection: 'row', alignItems: 'center' },
-  limitItem: { flex: 1, alignItems: 'center' },
-  limitDivider: { width: 1, height: 32, backgroundColor: Colors.border },
-  limitLabel: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginBottom: 4 },
-  limitValue: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.text },
-  scheduleCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 20, marginBottom: 24, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
-  scheduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  scheduleTitle: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.primary, flex: 1 },
-  scheduleDetails: { flexDirection: 'row', alignItems: 'center' },
-  scheduleItem: { flex: 1, alignItems: 'center' },
-  scheduleDivider: { width: 1, height: 32, backgroundColor: Colors.border },
-  scheduleLabel: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginBottom: 4 },
-  scheduleValue: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.text, textTransform: 'capitalize' },
+  limitCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 18, marginBottom: 20, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3, borderLeftWidth: 4, borderLeftColor: '#D97706' },
+  limitHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  limitTitle: { flex: 1, fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: '#D97706' },
+  limitSubtitle: { fontSize: 13, fontFamily: 'DMSans_500Medium', color: Colors.textSecondary },
+  progressTrack: { height: 8, backgroundColor: '#F3F4F6', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  limitRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  limitSpent: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textSecondary },
+  limitLeft: { fontSize: 12, fontFamily: 'DMSans_600SemiBold' },
+  goalsCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 18, marginBottom: 20, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
+  goalsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  goalsTitle: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.text },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  goalIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.studentPrimaryLight, alignItems: 'center', justifyContent: 'center' },
+  goalInfo: { flex: 1 },
+  goalName: { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: Colors.text, marginBottom: 4 },
+  goalProgress: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  goalTrack: { flex: 1, height: 6, backgroundColor: '#F3F4F6', borderRadius: 3, overflow: 'hidden' },
+  goalFill: { height: '100%', backgroundColor: Colors.studentPrimary, borderRadius: 3 },
+  goalPct: { fontSize: 11, fontFamily: 'DMSans_600SemiBold', color: Colors.studentPrimary, minWidth: 30 },
+  goalAmounts: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: Colors.text },
-  seeAll: { fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.primary },
+  seeAll: { fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.studentPrimary },
   emptyState: { alignItems: 'center', paddingVertical: 40, gap: 8 },
   emptyText: { fontSize: 16, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
   emptySubtext: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary },
@@ -403,12 +339,8 @@ const styles = StyleSheet.create({
   txDesc: { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
   txDate: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginTop: 2 },
   txAmount: { fontSize: 15, fontFamily: 'DMSans_700Bold' },
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: Colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  modalHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: Colors.text, marginBottom: 16 },
-  modalStudentRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 14, marginBottom: 8 },
-  modalStudentRowActive: { backgroundColor: Colors.primaryLight },
-  modalStudentName: { flex: 1, fontSize: 16, fontFamily: 'DMSans_500Medium', color: Colors.text },
+  savingsPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  savingsPillText: { flex: 1, fontSize: 13, fontFamily: 'DMSans_500Medium', color: 'rgba(255,255,255,0.9)' },
+  savingsPillAmount: { fontFamily: 'DMSans_700Bold', color: '#ffffff' },
+  savingsPillSub: { fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', fontSize: 12 },
 });

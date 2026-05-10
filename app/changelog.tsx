@@ -29,9 +29,21 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
-    version: '1.4.0',
+    version: '1.5.0',
     date: 'May 8, 2026',
     label: 'Latest',
+    entries: [
+      { type: 'improvement', text: 'Student goal deadline replaced with a manual date picker — set any exact date up to 20 years ahead, no more preset week/month buttons.' },
+      { type: 'new',         text: 'Deadline countdown now shows "X days remaining" for near dates and "X months remaining" for far dates — visible on both student and guardian goal cards.' },
+      { type: 'new',         text: 'Date picker enforces boundaries: past dates are blocked, maximum is 20 years from today.' },
+      { type: 'improvement', text: 'Expense screen now unified — Cash Out removed as a separate tab; all payouts are processed through the E-Wallet (GCash, Maya, or Bank/Card) directly from the Expense screen.' },
+      { type: 'new',         text: 'E-Wallet payout section is now always required when logging an expense — select GCash, Maya, or Bank/Card and enter the account number before submitting.' },
+      { type: 'fix',         text: 'Fixed OTA update error in Expo Go: checkForUpdateAsync() is now guarded and only runs in production builds, preventing the "not supported in Expo Go" crash.' },
+    ],
+  },
+  {
+    version: '1.4.0',
+    date: 'May 8, 2026',
     entries: [
       { type: 'new',         text: 'Push notifications — get alerted when allowance is sent, money is spent, deposit succeeds, or spending limit is near.' },
       { type: 'new',         text: 'Firebase FCM V1 integrated for reliable Android push delivery.' },

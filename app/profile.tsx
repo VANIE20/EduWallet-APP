@@ -177,7 +177,6 @@ export default function ProfileScreen() {
           onPress: async () => {
               try {
                 await logoutUser();
-                router.replace('/login');
               } catch (e: any) {
                 showError(e.message || 'Failed to sign out.');
               }

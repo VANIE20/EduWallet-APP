@@ -67,7 +67,6 @@ export default function GuardianDashboard() {
         style: 'destructive',
         onPress: async () => {
           await logoutUser();
-          router.replace('/login');
         },
       },
     ]);

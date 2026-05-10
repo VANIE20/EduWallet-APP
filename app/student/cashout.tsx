@@ -70,7 +70,11 @@ export default function CashoutScreen() {
 
   const selMethod = CASHOUT_OPTIONS.find(o => o.id === method)!;
   const parsedAmount = parseFloat(amount);
-  const isValid = parsedAmount > 0 && accountNo.trim().length >= 6;
+  const isValid = parsedAmount > 0 && (
+    method === 'card'
+      ? accountNo.trim().length >= 6
+      : accountNo.replace(/\D/g, '').length >= 10 && accountNo.replace(/\D/g, '').length <= 11
+  );
   const hasEnough = parsedAmount <= studentBalance;
 
   // ── Simulate cashout (UI-only) ───────────────────────────────────────────
@@ -116,7 +120,6 @@ export default function CashoutScreen() {
                 '✅ Cash Out Requested!',
                 `₱${parsedAmount.toFixed(2)} via ${selMethod.label} has been recorded.\n\nNote: This is a simulated cashout — actual transfer processing may take 1–3 business days.`,
                 [
-                  { text: 'View History', onPress: () => router.replace('/student/history') },
                   { text: 'Done', onPress: () => router.back() },
                 ],
               );
@@ -250,24 +253,49 @@ export default function CashoutScreen() {
 
         {/* Account number input */}
         <Text style={styles.sectionLabel}>{selMethod.accountLabel}</Text>
-        <View style={[styles.accountInputWrap, { borderColor: accountNo.length >= 6 ? selMethod.color : '#E2E8F0' }]}>
+        <View style={[styles.accountInputWrap, {
+          borderColor: method !== 'card'
+            ? (accountNo.length >= 10 ? selMethod.color : accountNo.length > 0 ? '#E2E8F0' : '#E2E8F0')
+            : (accountNo.length >= 6 ? selMethod.color : '#E2E8F0'),
+        }]}>
           <Ionicons
             name={selMethod.icon}
             size={18}
-            color={accountNo.length >= 6 ? selMethod.color : '#94A3B8'}
+            color={method !== 'card'
+              ? (accountNo.length >= 10 ? selMethod.color : '#94A3B8')
+              : (accountNo.length >= 6 ? selMethod.color : '#94A3B8')}
             style={{ marginRight: 10 }}
           />
           <TextInput
             style={styles.accountInput}
             value={accountNo}
-            onChangeText={setAccountNo}
+            onChangeText={(t) => {
+              if (method !== 'card') {
+                const digits = t.replace(/[^0-9]/g, '').slice(0, 11);
+                setAccountNo(digits);
+              } else {
+                setAccountNo(t);
+              }
+            }}
             placeholder={selMethod.placeholder}
             placeholderTextColor="#94A3B8"
-            keyboardType={method === 'card' ? 'number-pad' : 'phone-pad'}
+            keyboardType="phone-pad"
             editable={!isSubmitting}
-            maxLength={method === 'card' ? 19 : 13}
+            maxLength={method === 'card' ? 19 : 11}
           />
+          {method !== 'card' && accountNo.length > 0 && (
+            <Ionicons
+              name={accountNo.length >= 10 ? 'checkmark-circle' : 'alert-circle-outline'}
+              size={18}
+              color={accountNo.length >= 10 ? selMethod.color : '#DC2626'}
+            />
+          )}
         </View>
+        {method !== 'card' && accountNo.length > 0 && accountNo.length < 10 && (
+          <Text style={styles.accountHint}>
+            {`${10 - accountNo.length} more digit${10 - accountNo.length !== 1 ? 's' : ''} needed`}
+          </Text>
+        )}
 
         {/* Info banner */}
         <View style={styles.infoBanner}>
@@ -359,8 +387,9 @@ const styles = StyleSheet.create({
   methodIconWrap:       { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   methodLabel:          { fontSize: 12, fontFamily: 'DMSans_600SemiBold', color: '#64748B', textAlign: 'center' },
   methodCheck:          { position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  accountInputWrap:     { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 2, marginBottom: 24 },
+  accountInputWrap:     { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 2, marginBottom: 6 },
   accountInput:         { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.text },
+  accountHint:          { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#DC2626', marginBottom: 18, marginLeft: 4 },
   infoBanner:           { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F0F9FF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#BAE6FD' },
   infoBannerIcon:       { width: 38, height: 38, borderRadius: 10, backgroundColor: '#E0F2FE', alignItems: 'center', justifyContent: 'center' },
   infoBannerTitle:      { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#0369A1' },

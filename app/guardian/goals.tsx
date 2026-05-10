@@ -12,11 +12,22 @@ function formatCurrency(n: number) {
   return '₱' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-function getDaysLeft(deadline?: string | null): number | null {
+
+function getCountdown(deadline: string | null | undefined): { label: string; urgent: boolean; overdue: boolean } | null {
   if (!deadline) return null;
-  const diff = new Date(deadline).getTime() - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  const [y, m, d] = deadline.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  target.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((target.getTime() - now.getTime()) / 86400000);
+  if (diffDays < 0)   return { label: `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''}`, urgent: false, overdue: true };
+  if (diffDays === 0) return { label: 'Due today!', urgent: true, overdue: false };
+  if (diffDays < 60)  return { label: `${diffDays} day${diffDays !== 1 ? 's' : ''} remaining`, urgent: diffDays <= 7, overdue: false };
+  const months = Math.round(diffDays / 30.44);
+  return { label: `${months} month${months !== 1 ? 's' : ''} remaining`, urgent: false, overdue: false };
 }
+
 
 function GoalCard({
   goal, onLockToggle, onCoContribute, onDelete,
@@ -28,9 +39,9 @@ function GoalCard({
 }) {
   const progress   = goal.targetAmount > 0 ? goal.currentAmount / goal.targetAmount : 0;
   const isComplete = progress >= 1;
-  const daysLeft   = getDaysLeft(goal.deadline);
-  const isOverdue  = daysLeft !== null && daysLeft < 0;
-  const isUrgent   = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+  const countdown  = getCountdown(goal.deadline);
+  const isOverdue  = countdown?.overdue ?? false;
+  const isUrgent   = countdown?.urgent  ?? false;
 
   return (
     <View style={[styles.goalCard, goal.isLocked && styles.goalCardLocked]}>
@@ -49,12 +60,9 @@ function GoalCard({
           <Text style={styles.goalProgress}>
             {formatCurrency(goal.currentAmount)} of {formatCurrency(goal.targetAmount)}
           </Text>
-          {goal.deadline && (
+          {countdown && (
             <Text style={[styles.deadlineText, isOverdue && styles.deadlineOverdue, isUrgent && !isOverdue && styles.deadlineUrgent]}>
-              {isOverdue
-                ? `Overdue by ${Math.abs(daysLeft!)} day${Math.abs(daysLeft!) !== 1 ? 's' : ''}`
-                : daysLeft === 0 ? 'Due today!'
-                : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
+              {countdown.label}
             </Text>
           )}
         </View>
