@@ -53,6 +53,7 @@ interface AppContextValue {
   coContributeToGoal: (goalId: string, amount: number, studentId?: string) => Promise<boolean>;
   refreshData: (studentId?: string) => Promise<void>;
   switchRole: () => Promise<void>;
+  removeStudent: (studentId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -550,6 +551,42 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     return success;
   }, [savingsGoals, refreshData, loggedInUser]);
 
+  const removeStudent = useCallback(async (studentId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const result = await Storage.unlinkStudent(studentId);
+      if (!result.success) return result;
+
+      // Update linkedStudents state
+      const updatedStudents = linkedStudents.filter(s => s.id !== studentId);
+      setLinkedStudents(updatedStudents);
+
+      // Update selectedStudentId
+      if (selectedStudentIdRef.current === studentId) {
+        const nextStudent = updatedStudents[0] ?? null;
+        setSelectedStudentId(nextStudent?.id ?? null);
+        selectedStudentIdRef.current = nextStudent?.id ?? null;
+        if (nextStudent) await refreshData(nextStudent.id);
+      }
+
+      // Update loggedInUser linkedUserIds
+      if (loggedInUser) {
+        const updatedLinkedIds = (loggedInUser.linkedUserIds || []).filter(id => id !== studentId);
+        const updatedUser = {
+          ...loggedInUser,
+          linkedUserIds: updatedLinkedIds,
+          isLinked: updatedLinkedIds.length > 0,
+        };
+        await Storage.setLoggedInUser(updatedUser);
+        setLoggedInUserState(updatedUser);
+        setIsLinked(updatedLinkedIds.length > 0);
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }, [linkedStudents, loggedInUser, refreshData]);
+
   const switchRole = useCallback(async () => {
     const newRole = role === 'guardian' ? 'student' : 'guardian';
     await Storage.setRole(newRole);
@@ -599,13 +636,14 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     coContributeToGoal,
     refreshData,
     switchRole,
+    removeStudent,
   }), [
     role, isLoading, needsOTP, isLinked, loggedInUser,
     guardianBalance, studentBalance, allowanceConfig, spendingLimit,
     transactions, savingsGoals, todaySpent, linkedStudents, selectedStudentId,
     selectStudent, logoutUser, setUserRole, depositToGuardian, sendAllowanceNow,
     updateAllowanceConfig, updateSpendingLimit, addExpense, cashoutStudent,
-    addSavingsGoal, contributeToGoal, deleteSavingsGoal, redeemGoal, lockGoal, unlockGoal, coContributeToGoal, refreshData, switchRole,
+    addSavingsGoal, contributeToGoal, deleteSavingsGoal, redeemGoal, lockGoal, unlockGoal, coContributeToGoal, refreshData, switchRole, removeStudent,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

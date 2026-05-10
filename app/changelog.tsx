@@ -8,37 +8,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Colors from '../constants/colors';
 
-// ─────────────────────────────────────────────────────────────
-//  CHANGELOG DATA
-//  To add a new update: prepend a new object to CHANGELOG.
-//  type options: 'new' | 'fix' | 'improvement' | 'security'
-// ─────────────────────────────────────────────────────────────
 type EntryType = 'new' | 'fix' | 'improvement' | 'security';
-
-interface Entry {
-  type: EntryType;
-  text: string;
-}
-
-interface Release {
-  version: string;
-  date: string;
-  label?: string;
-  entries: Entry[];
-}
+interface Entry { type: EntryType; text: string; }
+interface Release { version: string; date: string; label?: string; entries: Entry[]; }
 
 const CHANGELOG: Release[] = [
   {
     version: '1.5.0',
-    date: 'May 8, 2026',
+    date: 'May 10, 2026',
     label: 'Latest',
     entries: [
+      { type: 'new',         text: 'Guardian can now remove a linked student — requires OTP email verification before the unlink is processed.' },
+      { type: 'new',         text: 'After removing all students, guardian is prompted to cash out their wallet balance or invite a new student.' },
+      { type: 'improvement', text: 'Linked Students card now shows for single students too, with a remove button next to each name.' },
       { type: 'improvement', text: 'Student goal deadline replaced with a manual date picker — set any exact date up to 20 years ahead, no more preset week/month buttons.' },
-      { type: 'new',         text: 'Deadline countdown now shows "X days remaining" for near dates and "X months remaining" for far dates — visible on both student and guardian goal cards.' },
+      { type: 'new',         text: 'Deadline countdown now shows "X days remaining" for near dates and "X months remaining" for far dates.' },
       { type: 'new',         text: 'Date picker enforces boundaries: past dates are blocked, maximum is 20 years from today.' },
-      { type: 'improvement', text: 'Expense screen now unified — Cash Out removed as a separate tab; all payouts are processed through the E-Wallet (GCash, Maya, or Bank/Card) directly from the Expense screen.' },
-      { type: 'new',         text: 'E-Wallet payout section is now always required when logging an expense — select GCash, Maya, or Bank/Card and enter the account number before submitting.' },
-      { type: 'fix',         text: 'Fixed OTA update error in Expo Go: checkForUpdateAsync() is now guarded and only runs in production builds, preventing the "not supported in Expo Go" crash.' },
+      { type: 'improvement', text: 'Expense screen now unified — Cash Out removed as a separate tab; all payouts processed through E-Wallet directly from the Expense screen.' },
+      { type: 'fix',         text: 'Fixed OTA update error in Expo Go: checkForUpdateAsync() now only runs in production builds.' },
     ],
   },
   {
@@ -119,9 +106,6 @@ const CHANGELOG: Release[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────
-//  Helpers
-// ─────────────────────────────────────────────────────────────
 const TYPE_CONFIG: Record<EntryType, { icon: string; color: string; bg: string; label: string }> = {
   new:         { icon: 'sparkles',        color: '#7C3AED', bg: '#F5F3FF', label: 'New' },
   fix:         { icon: 'build',           color: '#0369A1', bg: '#E0F2FE', label: 'Fix' },
@@ -129,9 +113,6 @@ const TYPE_CONFIG: Record<EntryType, { icon: string; color: string; bg: string; 
   security:    { icon: 'shield-checkmark',color: '#B45309', bg: '#FEF3C7', label: 'Security' },
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Components
-// ─────────────────────────────────────────────────────────────
 function EntryRow({ entry }: { entry: Entry }) {
   const cfg = TYPE_CONFIG[entry.type];
   return (
@@ -161,12 +142,8 @@ function ReleaseHeader({ release, isFirst }: { release: Release; isFirst: boolea
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Screen
-// ─────────────────────────────────────────────────────────────
 export default function ChangelogScreen() {
   const insets = useSafeAreaInsets();
-
   const sections = CHANGELOG.map((release, idx) => ({
     release,
     isFirst: idx === 0,
@@ -188,10 +165,7 @@ export default function ChangelogScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(item, index) => item.text + index}
-        contentContainerStyle={[
-          styles.list,
-          { paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 24 },
-        ]}
+        contentContainerStyle={[styles.list, { paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
         renderSectionHeader={({ section }) => (
           <ReleaseHeader release={section.release} isFirst={section.isFirst} />
@@ -207,9 +181,6 @@ export default function ChangelogScreen() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Styles
-// ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: Colors.background },
   header:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16 },
@@ -225,18 +196,7 @@ const styles = StyleSheet.create({
   latestBadge:        { backgroundColor: '#9B1C1C', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   latestBadgeText:    { fontSize: 11, fontFamily: 'DMSans_700Bold', color: '#fff', letterSpacing: 0.5 },
   dateText:           { fontSize: 13, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary },
-  entryCard:          {
-    backgroundColor: Colors.white,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 8,
-    shadowColor: Colors.cardShadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  entryCard:          { backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 8, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 4, elevation: 2 },
   entryRow:           { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   entryBadge:         { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, marginTop: 1, flexShrink: 0 },
   entryBadgeText:     { fontSize: 11, fontFamily: 'DMSans_700Bold' },

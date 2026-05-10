@@ -31,6 +31,7 @@ export default function RootLayout() {
         <Stack.Screen name="forgot-password" />
         <Stack.Screen name="link-required" />
         <Stack.Screen name="pending-invites" />
+        <Stack.Screen name="remove-student" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="guardian" />
         <Stack.Screen name="student" />

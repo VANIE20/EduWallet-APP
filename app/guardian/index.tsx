@@ -181,25 +181,35 @@ export default function GuardianDashboard() {
         </Animated.View>
 
         {/* Linked students list (only when more than 1) */}
-        {linkedStudents.length > 1 && (
+        {linkedStudents.length > 0 && (
           <Animated.View entering={FadeInDown.delay(330).duration(500)} style={styles.studentsCard}>
             <Text style={styles.studentsCardTitle}>Linked Students</Text>
             {linkedStudents.map(student => (
-              <Pressable
-                key={student.id}
-                onPress={() => { tap(); selectStudent(student.id); }}
-                style={[styles.studentRow, student.id === selectedStudentId && styles.studentRowActive]}
-              >
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
-                </View>
-                <Text style={[styles.studentName, student.id === selectedStudentId && styles.studentNameActive]}>
-                  {student.displayName}
-                </Text>
-                {student.id === selectedStudentId && (
-                  <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />
-                )}
-              </Pressable>
+              <View key={student.id} style={styles.studentRowContainer}>
+                <Pressable
+                  onPress={() => { tap(); selectStudent(student.id); }}
+                  style={[styles.studentRow, student.id === selectedStudentId && styles.studentRowActive]}
+                >
+                  <View style={styles.studentAvatar}>
+                    <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
+                  </View>
+                  <Text style={[styles.studentName, student.id === selectedStudentId && styles.studentNameActive]}>
+                    {student.displayName}
+                  </Text>
+                  {student.id === selectedStudentId && (
+                    <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />
+                  )}
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    tap();
+                    router.push({ pathname: '/remove-student', params: { studentId: student.id, studentName: student.displayName } });
+                  }}
+                  style={styles.removeStudentBtn}
+                >
+                  <Ionicons name="person-remove-outline" size={16} color={Colors.danger} />
+                </Pressable>
+              </View>
             ))}
           </Animated.View>
         )}
@@ -368,8 +378,10 @@ const styles = StyleSheet.create({
   linkBannerText: { flex: 1, fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.primary },
   studentsCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 16, marginBottom: 20, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
   studentsCardTitle: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12 },
+  studentRowContainer: { flexDirection: 'row', alignItems: 'center' },
+  studentRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12 },
   studentRowActive: { backgroundColor: Colors.primaryLight },
+  removeStudentBtn: { padding: 8, marginLeft: 4 },
   studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   studentAvatarText: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
   studentName: { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.text },
