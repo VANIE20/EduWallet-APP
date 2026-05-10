@@ -103,7 +103,7 @@ export default function RemoveStudentScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#9B1C1C', '#F59E0B']} style={StyleSheet.absoluteFill}
+      <LinearGradient colors={['#800000', '#F59E0B']} style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
 
       <View style={styles.decorCircle1} />
@@ -226,7 +226,7 @@ export default function RemoveStudentScreen() {
 
               <Pressable onPress={handleResendOtp} disabled={otpLoading} style={styles.resendRow}>
                 {otpLoading
-                  ? <ActivityIndicator size="small" color="#9B1C1C" />
+                  ? <ActivityIndicator size="small" color="#800000" />
                   : <Text style={styles.resendText}>Resend OTP</Text>
                 }
               </Pressable>
@@ -272,7 +272,7 @@ export default function RemoveStudentScreen() {
 
               {guardianBalance > 0 && (
                 <View style={styles.balanceHint}>
-                  <Ionicons name="wallet" size={16} color="#9B1C1C" />
+                  <Ionicons name="wallet" size={16} color="#800000" />
                   <Text style={styles.balanceHintText}>
                     You still have ₱{guardianBalance.toFixed(2)} in your wallet.
                     You can add a new student or cash it out.
@@ -313,14 +313,14 @@ const styles = StyleSheet.create({
   infoText:        { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textSecondary },
   errorRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.dangerLight, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
   errorText:       { fontSize: 13, fontFamily: 'DMSans_500Medium', color: Colors.danger, flex: 1 },
-  primaryBtn:      { backgroundColor: '#9B1C1C', borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  primaryBtn:      { backgroundColor: '#800000', borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   dangerBtn:       { backgroundColor: '#DC2626', borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   primaryBtnText:  { fontSize: 16, fontFamily: 'DMSans_700Bold', color: '#fff' },
   cancelBtn:       { borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
   cancelBtnText:   { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
   otpInput:        { backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: Colors.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, fontSize: 20, fontFamily: 'DMSans_700Bold', color: Colors.text, marginBottom: 8, textAlign: 'center', letterSpacing: 4 },
   resendRow:       { alignItems: 'flex-end', marginBottom: 20 },
-  resendText:      { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#9B1C1C' },
+  resendText:      { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#800000' },
   doneContainer:   { alignItems: 'center' },
   doneIcon:        { marginBottom: 16 },
   doneTitle:       { fontSize: 22, fontFamily: 'DMSans_700Bold', color: Colors.text, marginBottom: 8 },

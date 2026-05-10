@@ -44,7 +44,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
         name: 'EduWallet',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#9B1C1C',
+        lightColor: '#800000',
         sound: 'default',
       });
       console.log('[Notifications] Android channel created');

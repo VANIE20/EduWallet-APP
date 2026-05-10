@@ -163,7 +163,7 @@ export default function SpendingLimitScreen() {
                 <View style={styles.todayCard}>
                   <View style={styles.todayRow}>
                     <View style={styles.todayLeft}>
-                      <Ionicons name="today" size={18} color="#9B1C1C" />
+                      <Ionicons name="today" size={18} color="#800000" />
                       <Text style={styles.todayLabel}>Spent Today</Text>
                     </View>
                     <Text style={styles.todayAmount}>₱{todaySpent.toFixed(2)}</Text>

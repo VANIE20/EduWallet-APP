@@ -50,7 +50,7 @@ function GoalCard({
           backgroundColor: isComplete ? '#DCFCE7' : goal.isLocked ? '#FEF3C7' : '#FFF7ED',
         }]}>
           <Ionicons name={(goal.iconName || 'flag') as any} size={24}
-            color={isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#9B1C1C'} />
+            color={isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#800000'} />
         </View>
         <View style={styles.goalInfo}>
           <View style={styles.goalNameRow}>
@@ -74,13 +74,13 @@ function GoalCard({
       <View style={styles.progressBarBg}>
         <View style={[styles.progressBarFill, {
           width: `${Math.min(progress * 100, 100)}%` as any,
-          backgroundColor: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#9B1C1C',
+          backgroundColor: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#800000',
         }]} />
       </View>
 
       <View style={styles.goalFooter}>
         <Text style={[styles.goalPercent, {
-          color: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#9B1C1C',
+          color: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#800000',
         }]}>
           {Math.round(progress * 100)}%
         </Text>
@@ -89,7 +89,7 @@ function GoalCard({
           {!isComplete && (
             <Pressable onPress={() => onCoContribute(goal)}
               style={({ pressed }) => [styles.coContributeBtn, pressed && { opacity: 0.7 }]}>
-              <Ionicons name="gift" size={15} color="#9B1C1C" />
+              <Ionicons name="gift" size={15} color="#800000" />
               <Text style={styles.coContributeBtnText}>Bonus</Text>
             </Pressable>
           )}
@@ -175,7 +175,7 @@ export default function GuardianGoalsScreen() {
         </Pressable>
         <Text style={styles.headerTitle}>Savings Goals</Text>
         <Pressable onPress={() => { tap(); router.push('/guardian/add-goal'); }} style={styles.addBtn}>
-          <Ionicons name="add" size={24} color="#9B1C1C" />
+          <Ionicons name="add" size={24} color="#800000" />
         </Pressable>
       </View>
 
@@ -206,7 +206,7 @@ export default function GuardianGoalsScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setCoModal(null)}>
           <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
             <View style={styles.coHeader}>
-              <Ionicons name="gift" size={32} color="#9B1C1C" />
+              <Ionicons name="gift" size={32} color="#800000" />
               <Text style={styles.modalTitle}>Add a Bonus</Text>
             </View>
             {coModal && (
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   goalPercent:            { fontSize: 16, fontFamily: 'DMSans_700Bold' },
   footerActions:          { flexDirection: 'row', gap: 8, alignItems: 'center' },
   coContributeBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF7ED', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
-  coContributeBtnText:    { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#9B1C1C' },
+  coContributeBtnText:    { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#800000' },
   lockBtn:                { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
   lockBtnInactive:        { backgroundColor: '#F1F5F9' },
   lockBtnActive:          { backgroundColor: '#FEF3C7' },
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   modalTitle:             { fontSize: 20, fontFamily: 'DMSans_700Bold', color: Colors.text, textAlign: 'center', marginBottom: 2 },
   coGoalName:             { fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.textSecondary, textAlign: 'center', marginBottom: 4 },
   modalSubtitle:          { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, textAlign: 'center', marginBottom: 4 },
-  modalMaxHint:           { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#9B1C1C', textAlign: 'center', marginBottom: 14 },
+  modalMaxHint:           { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#800000', textAlign: 'center', marginBottom: 14 },
   modalInputRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   modalCurrency:          { fontSize: 28, fontFamily: 'DMSans_700Bold', color: Colors.textTertiary, marginRight: 4 },
   modalInput:             { fontSize: 36, fontFamily: 'DMSans_700Bold', color: Colors.text, minWidth: 80, textAlign: 'center' },
@@ -297,6 +297,6 @@ const styles = StyleSheet.create({
   modalBtn:               { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   modalBtnCancel:         { backgroundColor: Colors.surfaceAlt },
   modalBtnCancelText:     { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
-  modalBtnSave:           { backgroundColor: '#9B1C1C' },
+  modalBtnSave:           { backgroundColor: '#800000' },
   modalBtnSaveText:       { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
 });

@@ -1,20 +1,20 @@
 // EduWallet Color System
-// Guardian theme: red/crimson  |  Student theme: blue/indigo
+// Guardian theme: maroon  |  Student theme: amber/ember
 
 const Colors = {
   // ── Brand ───────────────────────────────────────────────────────────────
-  primary:              '#800000',   // guardian red
-  primaryLight:         '#800000',   // guardian red tint bg
+  primary:              '#800000',   // guardian maroon
+  primaryLight:         '#FFF0F0',   // guardian maroon tint bg
 
   // Guardian gradient
   guardianGradientStart: '#800000',
-  guardianGradientEnd:   '#800000',
+  guardianGradientEnd:   '#A00000',
 
-  // Student theme (blue)
-  studentPrimary:       '#BF6600',
-  studentGradientStart: '#BF6600',
-  studentGradientEnd:   '#BF6600',
-  studentPrimaryLight:  '#BF6600',
+  // Student theme (amber/ember)
+  studentPrimary:       '#D97706',
+  studentGradientStart: '#B45309',
+  studentGradientEnd:   '#F59E0B',
+  studentPrimaryLight:  '#FEF3C7',
 
   // ── Semantic ─────────────────────────────────────────────────────────────
   success:              '#16A34A',

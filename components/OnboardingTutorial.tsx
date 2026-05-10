@@ -41,7 +41,7 @@ const GUARDIAN_SLIDES: Slide[] = [
     id: 'welcome-guardian',
     type: 'welcome',
     gradientStart: '#7C3AED',
-    gradientEnd: '#4F46E5',
+    gradientEnd: '#B45309',
     heading: 'Welcome, Guardian! 👋',
     subheading:
       'This quick guide will show you how to manage your student\'s allowance, set limits, and track their spending. Swipe to learn more!',
@@ -60,7 +60,7 @@ const GUARDIAN_SLIDES: Slide[] = [
     id: 'guardian-dashboard',
     type: 'dashboard',
     gradientStart: '#7C3AED',
-    gradientEnd: '#4F46E5',
+    gradientEnd: '#B45309',
     heading: 'Your Dashboard',
     subheading: 'Your command center for managing student finances',
     sections: [
@@ -187,7 +187,7 @@ const GUARDIAN_SLIDES: Slide[] = [
     id: 'guardian-done',
     type: 'welcome',
     gradientStart: '#7C3AED',
-    gradientEnd: '#4F46E5',
+    gradientEnd: '#B45309',
     heading: "You're all set! 🎉",
     subheading:
       "Start by depositing funds into your wallet, then link a student account. From there, you can send allowances, set limits, and track spending — all in one place.",
@@ -198,7 +198,7 @@ const STUDENT_SLIDES: Slide[] = [
   {
     id: 'welcome-student',
     type: 'welcome',
-    gradientStart: '#9B1C1C',
+    gradientStart: '#800000',
     gradientEnd: '#B45309',
     heading: 'Welcome, Student! 🎒',
     subheading:
@@ -217,14 +217,14 @@ const STUDENT_SLIDES: Slide[] = [
   {
     id: 'student-dashboard',
     type: 'dashboard',
-    gradientStart: '#9B1C1C',
+    gradientStart: '#800000',
     gradientEnd: '#B45309',
     heading: 'Your Dashboard',
     subheading: 'Everything you need to manage your allowance',
     sections: [
       {
         icon: 'wallet',
-        iconColor: '#9B1C1C',
+        iconColor: '#800000',
         iconBg: '#FEE2E2',
         title: 'Available Balance',
         description: "Your current allowance balance. This increases when your guardian sends money, and decreases when you log an expense.",
@@ -296,14 +296,14 @@ const STUDENT_SLIDES: Slide[] = [
   {
     id: 'cashout',
     type: 'feature',
-    gradientStart: '#4F46E5',
+    gradientStart: '#B45309',
     gradientEnd: '#7C3AED',
     heading: 'Cash Out',
     subheading: 'Withdraw your balance (simulated)',
     sections: [
       {
         icon: 'card',
-        iconColor: '#4F46E5',
+        iconColor: '#B45309',
         iconBg: '#EDE9FE',
         title: 'How to Cash Out',
         description: 'Go to the Cash Out screen (from history or nav), enter an amount, choose a method (GCash, Maya, Bank), and confirm.',
@@ -344,7 +344,7 @@ const STUDENT_SLIDES: Slide[] = [
   {
     id: 'student-done',
     type: 'welcome',
-    gradientStart: '#9B1C1C',
+    gradientStart: '#800000',
     gradientEnd: '#B45309',
     heading: "Ready to go! 🚀",
     subheading:
@@ -374,13 +374,13 @@ export async function markOnboardingComplete(): Promise<void> {
 function SlideView({ slide }: { slide: Slide }) {
   const gradients: Record<string, string> = {
     '#7C3AED': 'rgba(124,58,237,',
-    '#9B1C1C': 'rgba(155,28,28,',
+    '#800000': 'rgba(128,0,0,',
     '#16A34A': 'rgba(22,163,74,',
     '#0284C7': 'rgba(2,132,199,',
     '#DC2626': 'rgba(220,38,38,',
     '#0891B2': 'rgba(8,145,178,',
     '#065F46': 'rgba(6,95,70,',
-    '#4F46E5': 'rgba(79,70,229,',
+    '#B45309': 'rgba(180,83,9,',
     '#D97706': 'rgba(217,119,6,',
     '#7C3AED2': 'rgba(109,40,217,',
   };
@@ -451,7 +451,7 @@ export default function OnboardingTutorial({ role, onComplete }: OnboardingTutor
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const isLast = currentIndex === slides.length - 1;
-  const accentColor = role === 'guardian' ? '#7C3AED' : '#9B1C1C';
+  const accentColor = role === 'guardian' ? '#7C3AED' : '#800000';
 
   const goTo = (index: number) => {
     if (index < 0 || index >= slides.length) return;

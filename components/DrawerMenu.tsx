@@ -50,7 +50,7 @@ export default function DrawerMenu({
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
   const isGuardian = userType === 'guardian';
-  const accentColor = isGuardian ? Colors.guardianGradientStart : '#9B1C1C';
+  const accentColor = isGuardian ? Colors.guardianGradientStart : Colors.studentPrimary;
 
   useEffect(() => {
     if (visible) {
@@ -89,7 +89,7 @@ export default function DrawerMenu({
       label: 'Dashboard',
       icon: 'home',
       iconBg: '#E0E7FF',
-      iconColor: '#9B1C1C',
+      iconColor: Colors.primary,
       onPress: () => { onClose(); router.replace('/guardian'); },
     },
     {
@@ -129,7 +129,7 @@ export default function DrawerMenu({
       label: 'Schedule Allowance',
       icon: 'calendar-outline',
       iconBg: '#FFFBEB',
-      iconColor: '#9B1C1C',
+      iconColor: Colors.primary,
       onPress: () => { onClose(); router.push('/guardian/schedule'); },
     },
     {
@@ -148,7 +148,7 @@ export default function DrawerMenu({
       label: 'Dashboard',
       icon: 'home',
       iconBg: '#FFFBEB',
-      iconColor: '#9B1C1C',
+      iconColor: Colors.studentPrimary,
       onPress: () => { onClose(); router.replace('/student'); },
     },
     {

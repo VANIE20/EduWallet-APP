@@ -78,7 +78,7 @@ export default function AdBanner({
   };
 
   return (
-    <View style={[containerStyle, { marginBottom: 24 }, style]}>
+    <View style={[containerStyle, style]}>
       <Animated.View
         style={{
           width: '100%',
@@ -110,19 +110,14 @@ export default function AdBanner({
 const styles = StyleSheet.create({
   image: {
     height: '100%',
-    width: '95%',
-    marginHorizontal: 10,
-    // Fix: Use React Native border properties
-    borderWidth: 2,
-    borderColor: 'maroon',
-    borderStyle: 'solid', 
+    width: '100%',
   },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginTop: 18,
+    marginTop: 10,
   },
   dot: {
     width: 6,

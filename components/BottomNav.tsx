@@ -144,7 +144,7 @@ export default function BottomNav({ userType, onLogout }: BottomNavProps) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const isGuardian = userType === 'guardian';
-  const accentColor = isGuardian ? Colors.guardianGradientStart : '#9B1C1C';
+  const accentColor = isGuardian ? Colors.guardianGradientStart : Colors.studentPrimary;
   const items = isGuardian ? guardianItems : studentItems;
 
   // Determine active tab — exact match for home, startsWith for others

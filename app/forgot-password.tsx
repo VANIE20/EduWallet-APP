@@ -111,7 +111,7 @@ export default function ForgotPasswordScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
-        colors={['#9B1C1C', '#F59E0B']}
+        colors={['#800000', '#F59E0B']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -231,7 +231,7 @@ export default function ForgotPasswordScreen() {
 
               <Pressable onPress={handleResendOtp} disabled={isSubmitting} style={styles.resendRow}>
                 {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#9B1C1C" />
+                  <ActivityIndicator size="small" color="#800000" />
                 ) : (
                   <Text style={styles.resendText}>Resend OTP</Text>
                 )}
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     color: Colors.danger,
   },
   primaryBtn: {
-    backgroundColor: '#9B1C1C',
+    backgroundColor: '#800000',
     borderRadius: 16,
     paddingVertical: 18,
     flexDirection: 'row',
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   resendText: {
     fontSize: 13,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#9B1C1C',
+    color: '#800000',
   },
   successContainer: {
     alignItems: 'center',

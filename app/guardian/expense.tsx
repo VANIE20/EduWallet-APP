@@ -16,7 +16,7 @@ const CATEGORIES = [
   { id: 'food',          label: 'Food',      icon: 'fast-food',           color: '#F97316', bg: '#FFF7ED' },
   { id: 'transport',     label: 'Transport', icon: 'bus',                 color: '#3B82F6', bg: '#EFF6FF' },
   { id: 'entertainment', label: 'Fun',       icon: 'game-controller',     color: '#8B5CF6', bg: '#F5F3FF' },
-  { id: 'school',        label: 'School',    icon: 'book',                color: '#9B1C1C', bg: '#F0FDFA' },
+  { id: 'school',        label: 'School',    icon: 'book',                color: '#800000', bg: '#F0FDFA' },
   { id: 'other',         label: 'Other',     icon: 'ellipsis-horizontal', color: '#6B7280', bg: '#F9FAFB' },
 ];
 

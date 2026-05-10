@@ -42,7 +42,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
 
   const isGuardian = loggedInUser?.role === 'guardian';
-  const accentColor = isGuardian ? Colors.guardianGradientStart : '#9B1C1C';
+  const accentColor = isGuardian ? Colors.guardianGradientStart : Colors.studentPrimary;
 
   useEffect(() => {
     if (loggedInUser) {
@@ -268,7 +268,7 @@ export default function ProfileScreen() {
 
         <Pressable style={styles.row} onPress={() => setSection('editName')}>
           <View style={[styles.rowIcon, { backgroundColor: '#FFFBEB' }]}>
-            <Ionicons name="person-outline" size={18} color="#9B1C1C" />
+            <Ionicons name="person-outline" size={18} color={Colors.primary} />
           </View>
           <View style={styles.rowContent}>
             <Text style={styles.rowLabel}>Display Name</Text>

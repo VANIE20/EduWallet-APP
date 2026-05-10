@@ -1,17 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, Alert, FlatList, Modal } from 'react-native';
+import {
+  View, Text, StyleSheet, Pressable, ScrollView,
+  Platform, Alert, Modal, Dimensions,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
 import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
 import AdBanner from '../../components/AdBanner';
+
+// ── Guardian theme: Maroon palette ───────────────────────────────
+const G = {
+  grad1: '#3D0000',   // deep maroon
+  grad2: '#6B0F1A',   // rich maroon
+  grad3: '#8B1A1A',   // warm maroon
+  accent: '#C0392B',  // bright maroon accent
+  accentSoft: '#E74C3C',
+  pill1: '#D4A0A0',   // muted rose for stats
+  pill2: '#C49A9A',
+  pill3: '#B08080',
+};
 
 function formatCurrency(amount: number): string {
   return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -27,6 +42,58 @@ function formatDate(dateStr: string): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/* ── Stat pill ───────────────────────────────────────────────── */
+function StatPill({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <View style={[sp.pill, { borderColor: accent + '50', backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+      <Text style={[sp.value, { color: '#fff' }]}>{value}</Text>
+      <Text style={sp.label}>{label}</Text>
+    </View>
+  );
+}
+const sp = StyleSheet.create({
+  pill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  value: { fontSize: 14, fontFamily: 'DMSans_700Bold', marginBottom: 2 },
+  label: { fontSize: 10, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.55)', textAlign: 'center' },
+});
+
+/* ── Donut ring ──────────────────────────────────────────────── */
+function SpendRing({ used, total }: { used: number; total: number }) {
+  const pct = total > 0 ? Math.min(used / total, 1) : 0;
+  const size = 72;
+  const bw = 7;
+  const safeColor = pct >= 1 ? '#EF4444' : pct >= 0.75 ? '#F59E0B' : '#10B981';
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{
+        width: size, height: size, borderRadius: size / 2,
+        borderWidth: bw, borderColor: 'rgba(0,0,0,0.06)', position: 'absolute',
+      }} />
+      <View style={{
+        width: size, height: size, borderRadius: size / 2,
+        borderWidth: bw,
+        borderColor: safeColor,
+        borderTopColor: pct > 0 ? safeColor : 'transparent',
+        borderRightColor: pct > 0.25 ? safeColor : 'transparent',
+        borderBottomColor: pct > 0.5 ? safeColor : 'transparent',
+        borderLeftColor: pct > 0.75 ? safeColor : 'transparent',
+        position: 'absolute',
+        transform: [{ rotate: '-90deg' }],
+      }} />
+      <Text style={{ fontSize: 11, fontFamily: 'DMSans_700Bold', color: safeColor }}>
+        {Math.round(pct * 100)}%
+      </Text>
+    </View>
+  );
 }
 
 export default function GuardianDashboard() {
@@ -52,9 +119,9 @@ export default function GuardianDashboard() {
     shouldShowOnboarding().then(show => setShowOnboarding(show));
   }, [refreshData]);
 
-  const guardianTransactions = transactions.filter(
-    t => t.type === 'deposit' || t.type === 'allowance'
-  ).slice(0, 5);
+  const guardianTransactions = transactions
+    .filter(t => t.type === 'deposit' || t.type === 'allowance')
+    .slice(0, 7);
 
   const tap = () => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -63,269 +130,360 @@ export default function GuardianDashboard() {
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => { await logoutUser(); },
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: async () => { await logoutUser(); } },
     ]);
   };
 
   const displayName = loggedInUser?.displayName || localDisplayName || 'there';
+  const firstName = displayName.split(' ')[0];
   const selectedStudent = linkedStudents.find(s => s.id === selectedStudentId);
   const selectedStudentName = selectedStudent?.displayName || 'Student';
-  const hasMultipleStudents = linkedStudents.length > 1;
+  const hasMultiple = linkedStudents.length > 1;
+
+  const limitActive = spendingLimit?.isActive && (spendingLimit?.dailyLimit ?? 0) > 0;
+  const limitUsed = limitActive ? Math.min(todaySpent / spendingLimit!.dailyLimit, 1) : 0;
+
+  const weekTotal = transactions
+    .filter(t => t.type === 'allowance')
+    .filter(t => (new Date().getTime() - new Date(t.date).getTime()) < 7 * 86400000)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const actions = [
+    { label: 'Deposit', icon: 'add-circle' as const, bg: '#10B981', route: '/guardian/deposit' },
+    { label: 'Send', icon: 'send' as const, bg: '#8B1A1A', route: '/guardian/send' },
+    { label: 'Schedule', icon: 'calendar' as const, bg: '#3B82F6', route: '/guardian/schedule' },
+    { label: 'Limit', icon: 'shield' as const, bg: '#EF4444', route: '/guardian/spending-limit' },
+  ];
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
+
+      {/* ── HEADER ──────────────────────────────────────────────── */}
       <LinearGradient
-        colors={[Colors.guardianGradientStart, Colors.guardianGradientEnd]}
-        style={[styles.headerGradient, { paddingTop: Platform.OS === 'web' ? 67 : insets.top + 16 }]}
+        colors={[G.grad1, G.grad2, G.grad3]}
+        style={[s.headerGradient, { paddingTop: Platform.OS === 'web' ? 67 : insets.top + 16 }]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View style={styles.headerRow}>
-          <View style={styles.headerCenter}>
-            <Text style={styles.greeting}>Hi, {displayName}!</Text>
-            <Text style={styles.headerSubtitle}>Wallet Overview</Text>
+        {/* Subtle decorative circles */}
+        <View style={s.decorCircle1} />
+        <View style={s.decorCircle2} />
+
+        {/* Top row */}
+        <View style={s.headerRow}>
+          <View>
+            <Text style={s.greetingSmall}>{getTimeOfDay()} 👋</Text>
+            <Text style={s.greeting}>{firstName}</Text>
           </View>
-          <View style={styles.headerActions}>
-            <Pressable onPress={() => { tap(); router.push('/profile'); }} style={styles.avatarBtn}>
-              <Text style={styles.avatarBtnText}>{(displayName || 'U')[0].toUpperCase()}</Text>
-            </Pressable>
-          </View>
+          <Pressable onPress={() => { tap(); router.push('/profile'); }} style={s.avatarBtn}>
+            <Text style={s.avatarText}>{(displayName || 'U')[0].toUpperCase()}</Text>
+          </Pressable>
         </View>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Your Wallet</Text>
-          <Text style={styles.balanceAmount}>{formatCurrency(guardianBalance)}</Text>
-
-          <Pressable
-            style={styles.studentBalanceRow}
-            onPress={() => hasMultipleStudents && setStudentPickerOpen(true)}
-            disabled={!hasMultipleStudents}
-          >
-            <Ionicons name="school-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.studentBalanceText}>
-              {selectedStudentName}: {formatCurrency(studentBalance)}
+        {/* Balance split card */}
+        <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.balanceSplit}>
+          {/* Guardian wallet */}
+          <View style={s.balanceSide}>
+            <Text style={s.balLabel}>Your Wallet</Text>
+            <Text style={s.balAmount} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(guardianBalance)}
             </Text>
-            {hasMultipleStudents && (
-              <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.7)" />
+          </View>
+
+          <View style={s.balDivider} />
+
+          {/* Student balance */}
+          <Pressable
+            style={s.balanceSide}
+            onPress={() => hasMultiple && setStudentPickerOpen(true)}
+            disabled={!hasMultiple}
+          >
+            <View style={s.balStudentRow}>
+              <Text style={s.balLabel} numberOfLines={1}>{selectedStudentName}</Text>
+              {hasMultiple && <Ionicons name="chevron-down" size={13} color="rgba(255,255,255,0.5)" />}
+            </View>
+            <Text style={s.balStudentAmount} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(studentBalance)}
+            </Text>
+            {studentBalance === 0 && (
+              <View style={s.alertBadge}>
+                <Ionicons name="warning-outline" size={10} color="#FCD34D" />
+                <Text style={s.balAlert}>No balance</Text>
+              </View>
+            )}
+            {studentBalance > 0 && studentBalance <= 10 && (
+              <View style={s.alertBadge}>
+                <Ionicons name="warning-outline" size={10} color="#FCD34D" />
+                <Text style={s.balAlert}>Balance low</Text>
+              </View>
             )}
           </Pressable>
+        </Animated.View>
 
-          {studentBalance <= 10 && studentBalance > 0 && (
-            <View style={styles.lowBalanceAlert}>
-              <Ionicons name="warning-outline" size={13} color="#FCD34D" />
-              <Text style={styles.lowBalanceAlertText}>Student balance is low</Text>
-            </View>
-          )}
-          {studentBalance === 0 && (
-            <View style={styles.lowBalanceAlert}>
-              <Ionicons name="alert-circle-outline" size={13} color="#FCD34D" />
-              <Text style={[styles.lowBalanceAlertText, { color: '#FCD34D' }]}>Student has no balance</Text>
-            </View>
-          )}
+        {/* Stats row */}
+        <Animated.View entering={FadeInDown.delay(220).duration(450)} style={s.statsRow}>
+          <StatPill label="Sent this week" value={formatCurrency(weekTotal)} accent={G.pill1} />
+          <View style={{ width: 8 }} />
+          <StatPill label="Today spent" value={formatCurrency(todaySpent)} accent={G.pill2} />
+          <View style={{ width: 8 }} />
+          <StatPill label="Students" value={String(linkedStudents.length || 0)} accent={G.pill3} />
         </Animated.View>
       </LinearGradient>
 
       <ScrollView
-        style={styles.content}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 }]}
+        style={s.scroll}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.actionsRow}>
-          <Pressable onPress={() => { tap(); router.push('/guardian/deposit'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#DCFCE7' }]}>
-              <Ionicons name="add-circle" size={24} color="#16A34A" />
-            </View>
-            <Text style={styles.actionText}>Deposit</Text>
-          </Pressable>
 
-          <Pressable onPress={() => { tap(); router.push('/guardian/send'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="send" size={22} color="#D97706" />
-            </View>
-            <Text style={styles.actionText}>Send</Text>
-          </Pressable>
-
-          <Pressable onPress={() => { tap(); router.push('/guardian/schedule'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Ionicons name="calendar" size={22} color="#9B1C1C" />
-            </View>
-            <Text style={styles.actionText}>Schedule</Text>
-          </Pressable>
-
-          <Pressable onPress={() => { tap(); router.push('/guardian/spending-limit'); }} style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}>
-            <View style={[styles.actionIcon, { backgroundColor: '#FEE2E2' }]}>
-              <Ionicons name="shield" size={22} color="#EF4444" />
-            </View>
-            <Text style={styles.actionText}>Limit</Text>
-          </Pressable>
-        </Animated.View>
-
-        {/* ── Rotating Ad Banner ── */}
-        <Animated.View entering={FadeInDown.delay(320).duration(500)}>
-          <AdBanner />
-        </Animated.View>
-
-        {/* Invite banner */}
-        <Animated.View entering={FadeInDown.delay(330).duration(500)}>
-          <Pressable onPress={() => { tap(); router.push('/guardian/invite-student'); }} style={styles.linkBanner}>
-            <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
-            <Text style={styles.linkBannerText}>
-              {isLinked ? 'Add another student' : 'No student linked yet — tap to invite one'}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-          </Pressable>
-        </Animated.View>
-
-        {linkedStudents.length > 0 && (
-          <Animated.View entering={FadeInDown.delay(340).duration(500)} style={styles.studentsCard}>
-            <Text style={styles.studentsCardTitle}>Linked Students</Text>
-            {linkedStudents.map(student => (
-              <View key={student.id} style={styles.studentRowContainer}>
-                <Pressable
-                  onPress={() => { tap(); selectStudent(student.id); }}
-                  style={[styles.studentRow, student.id === selectedStudentId && styles.studentRowActive]}
-                >
-                  <View style={styles.studentAvatar}>
-                    <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
-                  </View>
-                  <Text style={[styles.studentName, student.id === selectedStudentId && styles.studentNameActive]}>
-                    {student.displayName}
-                  </Text>
-                  {student.id === selectedStudentId && (
-                    <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />
-                  )}
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    tap();
-                    router.push({ pathname: '/remove-student', params: { studentId: student.id, studentName: student.displayName } });
-                  }}
-                  style={styles.removeStudentBtn}
-                >
-                  <Ionicons name="person-remove-outline" size={16} color={Colors.danger} />
-                </Pressable>
+        {/* ── QUICK ACTIONS ───────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(260).duration(450)} style={s.actionsRow}>
+          {actions.map(a => (
+            <Pressable
+              key={a.label}
+              onPress={() => { tap(); router.push(a.route as any); }}
+              style={({ pressed }) => [s.actionBtn, pressed && s.actionPressed]}
+            >
+              <View style={[s.actionIcon, { backgroundColor: a.bg + '18' }]}>
+                <Ionicons name={a.icon} size={20} color={a.bg} />
               </View>
-            ))}
+              <Text style={s.actionText}>{a.label}</Text>
+            </Pressable>
+          ))}
+        </Animated.View>
+
+        {/* ── INVITE / ADD STUDENT BANNER ─────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(290).duration(450)}>
+          <Pressable
+            onPress={() => { tap(); router.push('/guardian/invite-student'); }}
+            style={s.inviteBanner}
+          >
+            <LinearGradient
+              colors={[G.grad2, G.accentSoft]}
+              style={s.inviteBannerInner}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <View style={s.inviteLeft}>
+                <View style={s.inviteIconWrap}>
+                  <Ionicons name="person-add" size={18} color="#fff" />
+                </View>
+                <View>
+                  <Text style={s.inviteTitle}>
+                    {isLinked ? 'Add another student' : 'Link a student'}
+                  </Text>
+                  <Text style={s.inviteSub}>
+                    {isLinked ? 'Manage more students' : 'Send an invitation now'}
+                  </Text>
+                </View>
+              </View>
+              <View style={s.inviteArrow}>
+                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
+              </View>
+            </LinearGradient>
+          </Pressable>
+        </Animated.View>
+
+        {/* ── LINKED STUDENTS ─────────────────────────────────────── */}
+        {linkedStudents.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(310).duration(450)} style={s.card}>
+            <Text style={s.cardTitle}>Linked Students</Text>
+            <View style={s.studentGrid}>
+              {linkedStudents.map(student => {
+                const isActive = student.id === selectedStudentId;
+                const initial = (student.displayName || 'S')[0].toUpperCase();
+                return (
+                  <View key={student.id} style={s.studentCell}>
+                    <Pressable
+                      onPress={() => { tap(); selectStudent(student.id); }}
+                      style={[s.studentChip, isActive && s.studentChipActive]}
+                    >
+                      <LinearGradient
+                        colors={isActive ? [G.grad2, G.accentSoft] : ['#F1F5F9', '#E2E8F0']}
+                        style={s.studentAvatar}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                      >
+                        <Text style={[s.studentAvatarText, !isActive && { color: '#475569' }]}>{initial}</Text>
+                      </LinearGradient>
+                      <Text style={[s.studentName, isActive && s.studentNameActive]} numberOfLines={1}>
+                        {student.displayName}
+                      </Text>
+                      {isActive && (
+                        <Ionicons name="checkmark-circle" size={14} color={G.accentSoft} />
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        tap();
+                        router.push({ pathname: '/remove-student', params: { studentId: student.id, studentName: student.displayName } });
+                      }}
+                      style={s.removeBtn}
+                    >
+                      <Ionicons name="person-remove-outline" size={13} color="#EF4444" />
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
           </Animated.View>
         )}
 
-        {spendingLimit && spendingLimit.isActive && spendingLimit.dailyLimit > 0 && (
-          <Animated.View entering={FadeInDown.delay(350).duration(500)}>
-            <Pressable onPress={() => router.push('/guardian/spending-limit')} style={styles.limitCard}>
-              <View style={styles.limitHeader}>
-                <Ionicons name="shield-checkmark" size={20} color="#D97706" />
-                <Text style={styles.limitTitle}>Daily Spending Limit — {selectedStudentName}</Text>
-              </View>
-              <View style={styles.limitDetails}>
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Limit</Text>
-                  <Text style={styles.limitValue}>{formatCurrency(spendingLimit.dailyLimit)}</Text>
+        {/* ── SPENDING LIMIT ──────────────────────────────────────── */}
+        {limitActive && (
+          <Animated.View entering={FadeInDown.delay(330).duration(450)} style={s.card}>
+            <Pressable onPress={() => router.push('/guardian/spending-limit')}>
+              <View style={s.cardHeaderRow}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={s.cardTitle}>Daily Limit</Text>
+                  <Text style={s.cardSub}>{selectedStudentName} · Tap to adjust</Text>
                 </View>
-                <View style={styles.limitDivider} />
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Spent Today</Text>
-                  <Text style={[styles.limitValue, { color: todaySpent >= spendingLimit.dailyLimit ? Colors.danger : Colors.text }]}>
+                <SpendRing used={todaySpent} total={spendingLimit!.dailyLimit} />
+              </View>
+              <View style={s.limitStats}>
+                <View style={s.limitStat}>
+                  <Text style={s.limitStatLabel}>Limit</Text>
+                  <Text style={s.limitStatVal} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCurrency(spendingLimit!.dailyLimit)}
+                  </Text>
+                </View>
+                <View style={s.limitStatDivider} />
+                <View style={s.limitStat}>
+                  <Text style={s.limitStatLabel}>Spent</Text>
+                  <Text
+                    style={[s.limitStatVal, { color: todaySpent >= spendingLimit!.dailyLimit ? '#EF4444' : '#1E1E2E' }]}
+                    numberOfLines={1} adjustsFontSizeToFit
+                  >
                     {formatCurrency(todaySpent)}
                   </Text>
                 </View>
-                <View style={styles.limitDivider} />
-                <View style={styles.limitItem}>
-                  <Text style={styles.limitLabel}>Remaining</Text>
-                  <Text style={[styles.limitValue, { color: Colors.success }]}>
-                    {formatCurrency(Math.max(spendingLimit.dailyLimit - todaySpent, 0))}
+                <View style={s.limitStatDivider} />
+                <View style={s.limitStat}>
+                  <Text style={s.limitStatLabel}>Remaining</Text>
+                  <Text style={[s.limitStatVal, { color: '#10B981' }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCurrency(Math.max(spendingLimit!.dailyLimit - todaySpent, 0))}
                   </Text>
                 </View>
+              </View>
+              {/* Progress bar */}
+              <View style={s.limitTrack}>
+                <View style={[s.limitFill, {
+                  width: `${limitUsed * 100}%` as any,
+                  backgroundColor: limitUsed >= 1 ? '#EF4444' : limitUsed >= 0.75 ? '#F59E0B' : '#10B981',
+                }]} />
               </View>
             </Pressable>
           </Animated.View>
         )}
 
-        {allowanceConfig && allowanceConfig.isActive && (
-          <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.scheduleCard}>
-            <View style={styles.scheduleHeader}>
-              <Ionicons name="time" size={20} color={Colors.primary} />
-              <Text style={styles.scheduleTitle}>Auto-Allowance — {selectedStudentName}</Text>
-            </View>
-            <View style={styles.scheduleDetails}>
-              <View style={styles.scheduleItem}>
-                <Text style={styles.scheduleLabel}>Amount</Text>
-                <Text style={styles.scheduleValue}>{formatCurrency(allowanceConfig.amount)}</Text>
+        {/* ── AUTO ALLOWANCE ──────────────────────────────────────── */}
+        {allowanceConfig?.isActive && (
+          <Animated.View entering={FadeInDown.delay(350).duration(450)} style={s.allowanceCard}>
+            <LinearGradient
+              colors={[G.grad1, G.grad2]}
+              style={s.allowanceInner}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            >
+              <View style={s.allowanceRow}>
+                <View style={s.allowanceIconWrap}>
+                  <Ionicons name="time" size={20} color="rgba(255,255,255,0.8)" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.allowanceLabel}>Auto-Allowance · {selectedStudentName}</Text>
+                  <Text style={s.allowanceAmount} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCurrency(allowanceConfig.amount)}
+                  </Text>
+                </View>
+                <View style={s.allowanceFreqBadge}>
+                  <Text style={s.allowanceFreq}>{allowanceConfig.frequency}</Text>
+                </View>
               </View>
-              <View style={styles.scheduleDivider} />
-              <View style={styles.scheduleItem}>
-                <Text style={styles.scheduleLabel}>Frequency</Text>
-                <Text style={styles.scheduleValue}>{allowanceConfig.frequency}</Text>
-              </View>
-            </View>
+            </LinearGradient>
           </Animated.View>
         )}
 
-        <Animated.View entering={FadeInDown.delay(500).duration(500)}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
+        {/* ── AD BANNER ───────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(370).duration(450)} style={{ marginBottom: 18 }}>
+          <AdBanner />
+        </Animated.View>
+
+        {/* ── RECENT ACTIVITY ─────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(390).duration(450)}>
+          <View style={s.sectionHeaderRow}>
+            <Text style={s.cardTitle}>Recent Activity</Text>
             {guardianTransactions.length > 0 && (
-              <Pressable onPress={() => router.push('/guardian/history')}>
-                <Text style={styles.seeAll}>See All</Text>
+              <Pressable onPress={() => router.push('/guardian/history')} style={s.seeAllBtn}>
+                <Text style={s.seeAll}>See All</Text>
+                <Ionicons name="chevron-forward" size={13} color={G.accentSoft} />
               </Pressable>
             )}
           </View>
 
           {guardianTransactions.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Feather name="inbox" size={40} color={Colors.textTertiary} />
-              <Text style={styles.emptyText}>No transactions yet</Text>
-              <Text style={styles.emptySubtext}>Deposit funds to get started</Text>
+            <View style={s.emptyState}>
+              <View style={s.emptyIcon}>
+                <Ionicons name="wallet-outline" size={28} color="#CBD5E1" />
+              </View>
+              <Text style={s.emptyTitle}>No transactions yet</Text>
+              <Text style={s.emptySub}>Deposit funds to get started</Text>
             </View>
           ) : (
-            guardianTransactions.map((tx) => (
-              <View key={tx.id} style={styles.txRow}>
-                <View style={[styles.txIcon, { backgroundColor: tx.type === 'deposit' ? '#DCFCE7' : '#FEF3C7' }]}>
-                  <Ionicons name={tx.type === 'deposit' ? 'arrow-down' : 'arrow-up'} size={18} color={tx.type === 'deposit' ? '#16A34A' : '#D97706'} />
-                </View>
-                <View style={styles.txInfo}>
-                  <Text style={styles.txDesc}>{tx.description}</Text>
-                  <Text style={styles.txDate}>{formatDate(tx.date)}</Text>
-                </View>
-                <Text style={[styles.txAmount, { color: tx.type === 'deposit' ? '#16A34A' : '#D97706' }]}>
-                  {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
-                </Text>
-              </View>
-            ))
+            guardianTransactions.map((tx, i) => {
+              const isDeposit = tx.type === 'deposit';
+              return (
+                <Animated.View
+                  key={tx.id}
+                  entering={FadeInDown.delay(390 + i * 50).duration(400)}
+                  style={s.txRow}
+                >
+                  <View style={[s.txIcon, { backgroundColor: isDeposit ? '#D1FAE5' : '#FEE2E2' }]}>
+                    <Ionicons
+                      name={isDeposit ? 'arrow-down' : 'send'}
+                      size={15}
+                      color={isDeposit ? '#059669' : '#DC2626'}
+                    />
+                  </View>
+                  <View style={s.txBody}>
+                    <Text style={s.txDesc} numberOfLines={1}>{tx.description}</Text>
+                    <Text style={s.txDate}>{formatDate(tx.date)}</Text>
+                  </View>
+                  <Text style={[s.txAmount, { color: isDeposit ? '#059669' : '#DC2626' }]}>
+                    {isDeposit ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </Text>
+                </Animated.View>
+              );
+            })
           )}
         </Animated.View>
       </ScrollView>
 
-      {/* Student picker modal */}
+      {/* ── STUDENT PICKER MODAL ─────────────────────────────────── */}
       <Modal
         visible={studentPickerOpen}
         transparent
         animationType="slide"
         onRequestClose={() => setStudentPickerOpen(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setStudentPickerOpen(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Select Student</Text>
+        <Pressable style={s.modalOverlay} onPress={() => setStudentPickerOpen(false)}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <Text style={s.modalTitle}>Switch Student</Text>
             {linkedStudents.map(student => (
               <Pressable
                 key={student.id}
-                onPress={() => {
-                  tap();
-                  selectStudent(student.id);
-                  setStudentPickerOpen(false);
-                }}
-                style={[styles.modalStudentRow, student.id === selectedStudentId && styles.modalStudentRowActive]}
+                onPress={() => { tap(); selectStudent(student.id); setStudentPickerOpen(false); }}
+                style={[s.modalRow, student.id === selectedStudentId && s.modalRowActive]}
               >
-                <View style={styles.studentAvatar}>
-                  <Text style={styles.studentAvatarText}>{(student.displayName || 'S')[0].toUpperCase()}</Text>
-                </View>
-                <Text style={styles.modalStudentName}>{student.displayName}</Text>
+                <LinearGradient
+                  colors={student.id === selectedStudentId ? [G.grad2, G.accentSoft] : ['#F1F5F9', '#E2E8F0']}
+                  style={s.modalAvatar}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                >
+                  <Text style={[s.modalAvatarText, student.id !== selectedStudentId && { color: '#475569' }]}>
+                    {(student.displayName || 'S')[0].toUpperCase()}
+                  </Text>
+                </LinearGradient>
+                <Text style={s.modalStudentName}>{student.displayName}</Text>
                 {student.id === selectedStudentId && (
-                  <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                  <Ionicons name="checkmark-circle" size={20} color={G.accentSoft} />
                 )}
               </Pressable>
             ))}
@@ -336,85 +494,281 @@ export default function GuardianDashboard() {
       <BottomNav userType="guardian" onLogout={handleLogout} />
 
       {showOnboarding && (
-        <OnboardingTutorial
-          role="guardian"
-          onComplete={() => setShowOnboarding(false)}
-        />
+        <OnboardingTutorial role="guardian" onComplete={() => setShowOnboarding(false)} />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  headerGradient: { paddingHorizontal: 24, paddingBottom: 32, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 12 },
-  headerCenter: { flex: 1 },
-  greeting: { fontSize: 22, fontFamily: 'DMSans_700Bold', color: Colors.white },
-  headerSubtitle: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  whatsNewBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  avatarBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  avatarBtnText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.white },
-  balanceCard: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 20, padding: 24 },
-  balanceLabel: { fontSize: 14, fontFamily: 'DMSans_500Medium', color: 'rgba(255,255,255,0.7)', marginBottom: 4 },
-  balanceAmount: { fontSize: 40, fontFamily: 'DMSans_700Bold', color: Colors.white, marginBottom: 12 },
-  studentBalanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  studentBalanceText: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)' },
-  lowBalanceAlert: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  lowBalanceAlertText: { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#FCD34D' },
-  content: { flex: 1 },
-  scrollContent: { padding: 24 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  actionBtn: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
-  actionPressed: { opacity: 0.8, transform: [{ scale: 0.96 }] },
-  actionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  actionText: { fontSize: 12, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
-  linkBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primaryLight, borderRadius: 14, padding: 16, marginBottom: 20, gap: 10, borderWidth: 1, borderColor: Colors.primary },
-  linkBannerText: { flex: 1, fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.primary },
-  studentsCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 16, marginBottom: 20, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
-  studentsCardTitle: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  studentRowContainer: { flexDirection: 'row', alignItems: 'center' },
-  studentRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12 },
-  studentRowActive: { backgroundColor: Colors.primaryLight },
-  removeStudentBtn: { padding: 8, marginLeft: 4 },
-  studentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  studentAvatarText: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
-  studentName: { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.text },
-  studentNameActive: { fontFamily: 'DMSans_600SemiBold', color: Colors.primary },
-  limitCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 20, marginBottom: 24, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3, borderLeftWidth: 4, borderLeftColor: '#D97706' },
-  limitHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  limitTitle: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: '#D97706', flex: 1 },
-  limitDetails: { flexDirection: 'row', alignItems: 'center' },
-  limitItem: { flex: 1, alignItems: 'center' },
-  limitDivider: { width: 1, height: 32, backgroundColor: Colors.border },
-  limitLabel: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginBottom: 4 },
-  limitValue: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.text },
-  scheduleCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 20, marginBottom: 24, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3 },
-  scheduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  scheduleTitle: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.primary, flex: 1 },
-  scheduleDetails: { flexDirection: 'row', alignItems: 'center' },
-  scheduleItem: { flex: 1, alignItems: 'center' },
-  scheduleDivider: { width: 1, height: 32, backgroundColor: Colors.border },
-  scheduleLabel: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginBottom: 4 },
-  scheduleValue: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.text, textTransform: 'capitalize' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: Colors.text },
-  seeAll: { fontSize: 14, fontFamily: 'DMSans_500Medium', color: Colors.primary },
-  emptyState: { alignItems: 'center', paddingVertical: 40, gap: 8 },
-  emptyText: { fontSize: 16, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
-  emptySubtext: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary },
-  txRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 14, padding: 16, marginBottom: 10, shadowColor: Colors.cardShadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 4, elevation: 2 },
-  txIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  txInfo: { flex: 1 },
-  txDesc: { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
-  txDate: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginTop: 2 },
-  txAmount: { fontSize: 15, fontFamily: 'DMSans_700Bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: Colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  modalHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: Colors.text, marginBottom: 16 },
-  modalStudentRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 14, marginBottom: 8 },
-  modalStudentRowActive: { backgroundColor: Colors.primaryLight },
-  modalStudentName: { flex: 1, fontSize: 16, fontFamily: 'DMSans_500Medium', color: Colors.text },
+function getTimeOfDay() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8F4F4' },
+
+  /* ── Header ── */
+  headerGradient: {
+    paddingHorizontal: 22,
+    paddingBottom: 26,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    overflow: 'hidden',
+  },
+  decorCircle1: {
+    position: 'absolute', width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.04)', top: -60, right: -40,
+  },
+  decorCircle2: {
+    position: 'absolute', width: 140, height: 140, borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.03)', bottom: 0, left: -40,
+  },
+  headerRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 18,
+  },
+  greetingSmall: {
+    fontSize: 12, fontFamily: 'DMSans_400Regular',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  greeting: {
+    fontSize: 24, fontFamily: 'DMSans_700Bold',
+    color: '#fff', marginTop: 2,
+  },
+  avatarBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: '#fff' },
+
+  /* ── Balance split card ── */
+  balanceSplit: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 16,
+    marginBottom: 12,
+  },
+  balanceSide: { flex: 1, minWidth: 0 },
+  balDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: 14 },
+  balLabel: {
+    fontSize: 11, fontFamily: 'DMSans_400Regular',
+    color: 'rgba(255,255,255,0.55)', marginBottom: 4,
+  },
+  balAmount: {
+    fontSize: 22, fontFamily: 'DMSans_700Bold',
+    color: '#fff', minHeight: 28,
+  },
+  balStudentRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  balStudentAmount: {
+    fontSize: 22, fontFamily: 'DMSans_700Bold',
+    color: 'rgba(255,255,255,0.85)', minHeight: 28,
+  },
+  alertBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  balAlert: {
+    fontSize: 11, fontFamily: 'DMSans_500Medium',
+    color: '#FCD34D',
+  },
+
+  /* ── Stats row ── */
+  statsRow: { flexDirection: 'row' },
+
+  /* ── Scroll ── */
+  scroll: { flex: 1 },
+  scrollContent: { padding: 18, paddingTop: 22 },
+
+  /* ── Quick actions ── */
+  actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  actionBtn: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#3D0000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  actionPressed: { opacity: 0.82, transform: [{ scale: 0.96 }] },
+  actionIcon: {
+    width: 42, height: 42, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+  },
+  actionText: { fontSize: 11, fontFamily: 'DMSans_600SemiBold', color: '#1E1E2E' },
+
+  /* ── Invite banner ── */
+  inviteBanner: { borderRadius: 18, overflow: 'hidden', marginBottom: 16 },
+  inviteBannerInner: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 14, borderRadius: 18,
+  },
+  inviteLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  inviteIconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  inviteTitle: { fontSize: 14, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  inviteSub: {
+    fontSize: 11, fontFamily: 'DMSans_400Regular',
+    color: 'rgba(255,255,255,0.7)', marginTop: 2,
+  },
+  inviteArrow: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  /* ── Card ── */
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#3D0000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 14,
+  },
+  cardTitle: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: '#1E1E2E' },
+  cardSub: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: '#94A3B8', marginTop: 2 },
+
+  sectionHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 12,
+  },
+  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  seeAll: { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#C0392B' },
+
+  /* ── Students ── */
+  studentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  studentCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  studentChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+  },
+  studentChipActive: { borderColor: '#C0392B', backgroundColor: '#FFF5F5' },
+  studentAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  studentAvatarText: { fontSize: 12, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  studentName: {
+    fontSize: 12, fontFamily: 'DMSans_500Medium',
+    color: '#475569', maxWidth: 75,
+  },
+  studentNameActive: { color: '#C0392B', fontFamily: 'DMSans_600SemiBold' },
+  removeBtn: { padding: 5 },
+
+  /* ── Spending limit ── */
+  limitStats: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  limitStat: { flex: 1, alignItems: 'center', minWidth: 0 },
+  limitStatDivider: { width: 1, height: 30, backgroundColor: '#E2E8F0' },
+  limitStatLabel: {
+    fontSize: 10, fontFamily: 'DMSans_400Regular',
+    color: '#94A3B8', marginBottom: 3,
+  },
+  limitStatVal: { fontSize: 14, fontFamily: 'DMSans_700Bold', color: '#1E1E2E' },
+  limitTrack: { height: 6, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden' },
+  limitFill: { height: '100%', borderRadius: 3 },
+
+  /* ── Allowance card ── */
+  allowanceCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 16 },
+  allowanceInner: { padding: 16, borderRadius: 18 },
+  allowanceRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  allowanceIconWrap: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  allowanceLabel: {
+    fontSize: 11, fontFamily: 'DMSans_400Regular',
+    color: 'rgba(255,255,255,0.6)', marginBottom: 3,
+  },
+  allowanceAmount: { fontSize: 20, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  allowanceFreqBadge: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  allowanceFreq: {
+    fontSize: 11, fontFamily: 'DMSans_600SemiBold',
+    color: '#fff', textTransform: 'capitalize',
+  },
+
+  /* ── Transactions ── */
+  txRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 14,
+    padding: 12, marginBottom: 8,
+    shadowColor: '#3D0000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  txIcon: {
+    width: 38, height: 38, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
+  },
+  txBody: { flex: 1, minWidth: 0 },
+  txDesc: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#1E1E2E' },
+  txDate: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: '#94A3B8', marginTop: 2 },
+  txAmount: { fontSize: 14, fontFamily: 'DMSans_700Bold', marginLeft: 8 },
+
+  /* ── Empty state ── */
+  emptyState: { alignItems: 'center', paddingVertical: 36 },
+  emptyIcon: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+  },
+  emptyTitle: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: '#475569' },
+  emptySub: { fontSize: 12, fontFamily: 'DMSans_400Regular', color: '#94A3B8', marginTop: 4 },
+
+  /* ── Modal ── */
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    padding: 22, paddingBottom: 44,
+  },
+  modalHandle: {
+    width: 36, height: 4, backgroundColor: '#E2E8F0',
+    borderRadius: 2, alignSelf: 'center', marginBottom: 18,
+  },
+  modalTitle: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: '#1E1E2E', marginBottom: 16 },
+  modalRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 11, paddingHorizontal: 12,
+    borderRadius: 14, marginBottom: 7,
+    backgroundColor: '#F8FAFC',
+  },
+  modalRowActive: { backgroundColor: '#FFF5F5' },
+  modalAvatar: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalAvatarText: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  modalStudentName: { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: '#1E1E2E' },
 });

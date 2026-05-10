@@ -62,7 +62,7 @@ function GoalCard({
           <Ionicons
             name={(goal.iconName || 'flag') as any}
             size={24}
-            color={isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#6366F1'}
+            color={isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#D97706'}
           />
         </View>
         <View style={styles.goalInfo}>
@@ -90,13 +90,13 @@ function GoalCard({
       <View style={styles.progressBarBg}>
         <View style={[styles.progressBarFill, {
           width: `${Math.min(progress * 100, 100)}%` as any,
-          backgroundColor: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#6366F1',
+          backgroundColor: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#D97706',
         }]} />
       </View>
 
       <View style={styles.goalFooter}>
         <Text style={[styles.goalPercent, {
-          color: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#6366F1',
+          color: isComplete ? '#16A34A' : goal.isLocked ? '#D97706' : '#D97706',
         }]}>
           {Math.round(progress * 100)}%
         </Text>
@@ -116,7 +116,7 @@ function GoalCard({
               onPress={() => onContribute(goal.id)}
               style={({ pressed }) => [styles.contributeBtn, pressed && { opacity: 0.7 }]}
             >
-              <Ionicons name="add" size={16} color="#6366F1" />
+              <Ionicons name="add" size={16} color="#D97706" />
               <Text style={styles.contributeBtnText}>Save</Text>
             </Pressable>
           )}
@@ -209,7 +209,7 @@ export default function GoalsScreen() {
         </Pressable>
         <Text style={styles.headerTitle}>Savings Goals</Text>
         <Pressable onPress={() => { tap(); router.push('/student/add-goal'); }} style={styles.addBtn}>
-          <Ionicons name="add" size={24} color="#6366F1" />
+          <Ionicons name="add" size={24} color="#D97706" />
         </Pressable>
       </View>
 
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   goalNameRow:        { flexDirection: 'row', alignItems: 'center' },
   goalName:           { fontSize: 16, fontFamily: 'DMSans_700Bold', color: Colors.text },
   goalProgress:       { fontSize: 13, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginTop: 2 },
-  deadlineText:       { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#6366F1', marginTop: 3 },
+  deadlineText:       { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#D97706', marginTop: 3 },
   deadlineUrgent:     { color: '#D97706' },
   deadlineOverdue:    { color: '#DC2626' },
   deleteBtn:          { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
@@ -366,8 +366,8 @@ const styles = StyleSheet.create({
   goalFooter:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   goalPercent:        { fontSize: 16, fontFamily: 'DMSans_700Bold' },
   footerActions:      { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  contributeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EEF2FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
-  contributeBtnText:  { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#6366F1' },
+  contributeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  contributeBtnText:  { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#D97706' },
   redeemBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
   redeemBtnText:      { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#16A34A' },
   completeBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   empty:              { alignItems: 'center', paddingTop: 80, gap: 10 },
   emptyText:          { fontSize: 18, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
   emptySubtext:       { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, marginBottom: 16 },
-  createBtn:          { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#6366F1', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14 },
+  createBtn:          { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D97706', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14 },
   createBtnText:      { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
   modalOverlay:       { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent:       { width: '100%', backgroundColor: Colors.white, borderRadius: 20, padding: 24 },
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   redeemCongrats:     { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textSecondary, textAlign: 'center', marginBottom: 12, lineHeight: 20 },
   redeemWarning:      { fontSize: 13, fontFamily: 'DMSans_500Medium', color: '#D97706', textAlign: 'center', marginBottom: 12, backgroundColor: '#FEF3C7', padding: 10, borderRadius: 10 },
   modalSubtitle:      { fontSize: 14, fontFamily: 'DMSans_400Regular', color: Colors.textTertiary, textAlign: 'center', marginBottom: 4 },
-  modalRemaining:     { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#6366F1', textAlign: 'center', marginBottom: 12 },
+  modalRemaining:     { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#D97706', textAlign: 'center', marginBottom: 12 },
   capNote:            { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: '#F0F9FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12, borderWidth: 1, borderColor: '#BAE6FD' },
   capNoteText:        { flex: 1, fontSize: 12, fontFamily: 'DMSans_400Regular', color: '#0369A1', lineHeight: 17 },
   errorText:          { fontSize: 12, color: '#DC2626', textAlign: 'center', marginBottom: 8 },
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
   modalBtn:           { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   modalBtnCancel:     { backgroundColor: Colors.surfaceAlt },
   modalBtnCancelText: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
-  modalBtnSave:       { backgroundColor: '#6366F1' },
+  modalBtnSave:       { backgroundColor: '#D97706' },
   modalBtnRedeem:     { backgroundColor: '#16A34A' },
   modalBtnSaveText:   { fontSize: 15, fontFamily: 'DMSans_700Bold', color: Colors.white },
 });

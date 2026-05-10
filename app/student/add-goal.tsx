@@ -177,7 +177,7 @@ function DatePickerModal({
           {/* Preview */}
           {!isInvalid && (
             <View style={dp.preview}>
-              <Ionicons name="calendar" size={14} color="#6366F1" />
+              <Ionicons name="calendar" size={14} color="#D97706" />
               <Text style={dp.previewText}>{formatDate(isoVal)}</Text>
               <Text style={[dp.countdown,
                 getCountdown(isoVal).overdue && { color: '#DC2626' },
@@ -293,7 +293,7 @@ export default function AddGoalScreen() {
             <Ionicons
               name="calendar-outline"
               size={18}
-              color={deadline ? '#6366F1' : Colors.textTertiary}
+              color={deadline ? '#D97706' : Colors.textTertiary}
             />
             <Text style={[styles.dateBtnText, deadline && styles.dateBtnTextSet]}>
               {deadline ? formatDate(deadline) : 'Choose a date…'}
@@ -303,7 +303,7 @@ export default function AddGoalScreen() {
                 onPress={(e) => { e.stopPropagation(); tap(); setDeadline(null); }}
                 hitSlop={10}
               >
-                <Ionicons name="close-circle" size={18} color="#6366F1" />
+                <Ionicons name="close-circle" size={18} color="#D97706" />
               </Pressable>
             )}
           </Pressable>
@@ -318,7 +318,7 @@ export default function AddGoalScreen() {
               <Ionicons
                 name={countdown.overdue ? 'alert-circle' : 'time-outline'}
                 size={14}
-                color={countdown.overdue ? '#DC2626' : countdown.urgent ? '#D97706' : '#6366F1'}
+                color={countdown.overdue ? '#DC2626' : countdown.urgent ? '#D97706' : '#D97706'}
               />
               <Text style={[
                 styles.countdownText,
@@ -339,7 +339,7 @@ export default function AddGoalScreen() {
               <Pressable key={icon.name} onPress={() => { tap(); setSelectedIcon(icon.name); }}
                 style={[styles.iconBtn, selectedIcon === icon.name && styles.iconBtnActive]}>
                 <Ionicons name={icon.name as any} size={24}
-                  color={selectedIcon === icon.name ? '#6366F1' : Colors.textSecondary} />
+                  color={selectedIcon === icon.name ? '#D97706' : Colors.textSecondary} />
               </Pressable>
             ))}
           </View>
@@ -380,18 +380,18 @@ const styles = StyleSheet.create({
   amountInput:      { flex: 1, fontSize: 28, fontFamily: 'DMSans_700Bold', color: Colors.text },
 
   dateBtn:          { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, borderWidth: 1.5, borderColor: Colors.border },
-  dateBtnSet:       { borderColor: '#6366F1', backgroundColor: '#EEF2FF' },
+  dateBtnSet:       { borderColor: '#D97706', backgroundColor: '#FEF3C7' },
   dateBtnText:      { flex: 1, fontSize: 15, fontFamily: 'DMSans_500Medium', color: Colors.textTertiary },
-  dateBtnTextSet:   { color: '#6366F1' },
+  dateBtnTextSet:   { color: '#D97706' },
 
-  countdownBadge:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: '#EEF2FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#C7D2FE' },
-  countdownText:    { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#6366F1' },
+  countdownBadge:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#C7D2FE' },
+  countdownText:    { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#D97706' },
 
   iconGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   iconBtn:          { width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.border },
-  iconBtnActive:    { borderColor: '#6366F1', backgroundColor: '#EEF2FF' },
+  iconBtnActive:    { borderColor: '#D97706', backgroundColor: '#FEF3C7' },
   footer:           { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 24, paddingTop: 16, backgroundColor: Colors.background },
-  createBtn:        { backgroundColor: '#6366F1', borderRadius: 16, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  createBtn:        { backgroundColor: '#D97706', borderRadius: 16, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   createBtnDisabled:{ opacity: 0.4 },
   createBtnText:    { fontSize: 17, fontFamily: 'DMSans_700Bold', color: Colors.white },
 });
@@ -411,15 +411,15 @@ const dp = StyleSheet.create({
 
   dayGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 },
   dayBtn:        { width: 40, height: 40, borderRadius: 10, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
-  dayBtnSel:     { backgroundColor: '#6366F1' },
+  dayBtnSel:     { backgroundColor: '#D97706' },
   dayBtnDis:     { opacity: 0.25 },
   dayNum:        { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: Colors.text },
   dayNumSel:     { color: '#fff' },
   dayNumDis:     { color: Colors.textTertiary },
 
-  preview:       { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, backgroundColor: '#EEF2FF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 10 },
-  previewText:   { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#4F46E5' },
-  countdown:     { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#6366F1' },
+  preview:       { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, backgroundColor: '#FEF3C7', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 10 },
+  previewText:   { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: '#B45309' },
+  countdown:     { fontSize: 12, fontFamily: 'DMSans_500Medium', color: '#D97706' },
 
   errRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   errText:       { fontSize: 13, fontFamily: 'DMSans_500Medium', color: '#DC2626' },
@@ -427,7 +427,7 @@ const dp = StyleSheet.create({
   actions:       { flexDirection: 'row', gap: 12, marginTop: 6 },
   btn:           { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   btnCancel:     { backgroundColor: Colors.surfaceAlt },
-  btnConfirm:    { backgroundColor: '#6366F1' },
+  btnConfirm:    { backgroundColor: '#D97706' },
   btnCancelText: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
   btnConfirmText:{ fontSize: 15, fontFamily: 'DMSans_700Bold', color: '#fff' },
 });

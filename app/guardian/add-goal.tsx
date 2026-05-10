@@ -104,10 +104,10 @@ export default function AddGoalScreen() {
           </View>
           {deadline && (
             <View style={styles.deadlinePill}>
-              <Ionicons name="calendar" size={14} color="#9B1C1C" />
+              <Ionicons name="calendar" size={14} color="#800000" />
               <Text style={styles.deadlinePillText}>Target: {formatDate(deadline)}</Text>
               <Pressable onPress={() => setDeadline(null)} style={{ marginLeft: 4 }}>
-                <Ionicons name="close-circle" size={16} color="#9B1C1C" />
+                <Ionicons name="close-circle" size={16} color="#800000" />
               </Pressable>
             </View>
           )}
@@ -120,7 +120,7 @@ export default function AddGoalScreen() {
               <Pressable key={icon.name} onPress={() => { tap(); setSelectedIcon(icon.name); }}
                 style={[styles.iconBtn, selectedIcon === icon.name && styles.iconBtnActive]}>
                 <Ionicons name={icon.name as any} size={24}
-                  color={selectedIcon === icon.name ? '#9B1C1C' : Colors.textSecondary} />
+                  color={selectedIcon === icon.name ? '#800000' : Colors.textSecondary} />
               </Pressable>
             ))}
           </View>
@@ -154,16 +154,16 @@ const styles = StyleSheet.create({
   amountInput:      { flex: 1, fontSize: 28, fontFamily: 'DMSans_700Bold', color: Colors.text },
   presetRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   presetBtn:        { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: Colors.white, borderWidth: 1.5, borderColor: Colors.border },
-  presetBtnActive:  { backgroundColor: '#FFF7ED', borderColor: '#9B1C1C' },
+  presetBtnActive:  { backgroundColor: '#FFF7ED', borderColor: '#800000' },
   presetText:       { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: Colors.textSecondary },
-  presetTextActive: { color: '#9B1C1C' },
+  presetTextActive: { color: '#800000' },
   deadlinePill:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF7ED', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start' },
-  deadlinePillText: { fontSize: 13, fontFamily: 'DMSans_500Medium', color: '#9B1C1C' },
+  deadlinePillText: { fontSize: 13, fontFamily: 'DMSans_500Medium', color: '#800000' },
   iconGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   iconBtn:          { width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.border },
-  iconBtnActive:    { borderColor: '#9B1C1C', backgroundColor: '#FFF7ED' },
+  iconBtnActive:    { borderColor: '#800000', backgroundColor: '#FFF7ED' },
   footer:           { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 24, paddingTop: 16, backgroundColor: Colors.background },
-  createBtn:        { backgroundColor: '#9B1C1C', borderRadius: 16, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  createBtn:        { backgroundColor: '#800000', borderRadius: 16, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   createBtnDisabled:{ opacity: 0.4 },
   createBtnText:    { fontSize: 17, fontFamily: 'DMSans_700Bold', color: Colors.white },
 });

@@ -22,11 +22,27 @@ function formatFullDate(dateStr: string): string {
   });
 }
 
+function getDailySpend(transactions: Transaction[]): { label: string; amount: number }[] {
+  const map: Record<string, number> = {};
+  const now = new Date();
+  transactions.forEach(tx => {
+    if (tx.type !== 'expense') return;
+    const d = new Date(tx.date);
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    if (diffDays >= 7) return;
+    const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    map[key] = (map[key] || 0) + tx.amount;
+  });
+  return Object.entries(map)
+    .map(([label, amount]) => ({ label, amount }))
+    .sort((a, b) => new Date(b.label).getTime() - new Date(a.label).getTime());
+}
+
 const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
   food: { icon: 'fast-food', color: '#F97316', bg: '#FFF7ED' },
   transport: { icon: 'bus', color: '#3B82F6', bg: '#EFF6FF' },
   entertainment: { icon: 'game-controller', color: '#8B5CF6', bg: '#F5F3FF' },
-  school: { icon: 'book', color: '#9B1C1C', bg: '#F0FDFA' },
+  school: { icon: 'book', color: '#800000', bg: '#F0FDFA' },
   savings: { icon: 'trending-up', color: '#10B981', bg: '#FFF7ED' },
   other: { icon: 'ellipsis-horizontal', color: '#6B7280', bg: '#F9FAFB' },
 };
@@ -74,7 +90,10 @@ export default function StudentHistoryScreen() {
 
   const studentTx = transactions
     .filter(t => t.type === 'expense' || t.type === 'allowance')
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 7);
+
+  const dailySpend = getDailySpend(transactions);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -98,8 +117,25 @@ export default function StudentHistoryScreen() {
       {studentTx.length > 0 && (
         <View style={styles.summaryRow}>
           <Text style={styles.summaryText}>
-            {studentTx.length} transaction{studentTx.length !== 1 ? 's' : ''}
+            {studentTx.length} transaction{studentTx.length !== 1 ? 's' : ''} shown
           </Text>
+        </View>
+      )}
+
+      {dailySpend.length > 0 && (
+        <View style={styles.dailyCard}>
+          <Text style={styles.dailyTitle}>Daily Spending (Last 7 Days)</Text>
+          {dailySpend.map(({ label, amount }) => (
+            <View key={label} style={styles.dailyRow}>
+              <Text style={styles.dailyLabel}>{label}</Text>
+              <View style={styles.dailyBarWrap}>
+                <View style={[styles.dailyBar, {
+                  width: `${Math.min((amount / Math.max(...dailySpend.map(d => d.amount))) * 100, 100)}%` as any,
+                }]} />
+              </View>
+              <Text style={styles.dailyAmount}>{formatCurrency(amount)}</Text>
+            </View>
+          ))}
         </View>
       )}
 
@@ -242,5 +278,54 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  dailyCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 14,
+    padding: 14,
+    shadowColor: '#6B1E00',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  dailyTitle: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#1E1E2E',
+    marginBottom: 10,
+  },
+  dailyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 7,
+    gap: 8,
+  },
+  dailyLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_500Medium',
+    color: '#64748B',
+    width: 60,
+  },
+  dailyBarWrap: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  dailyBar: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#C84B00',
+  },
+  dailyAmount: {
+    fontSize: 11,
+    fontFamily: 'DMSans_700Bold',
+    color: '#1E1E2E',
+    width: 72,
+    textAlign: 'right',
   },
 });
