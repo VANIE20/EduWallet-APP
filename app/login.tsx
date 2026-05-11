@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
-  Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator
+  Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator, BackHandler
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,13 @@ import { Image } from 'react-native';
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { refreshData, isLinked, loggedInUser } = useApp();
+
+  // Disable Android hardware back button on login screen
+  // so users can't navigate back to dashboard after logout
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
 
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');

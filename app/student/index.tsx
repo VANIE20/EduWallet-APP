@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, ScrollView, Platform, Alert,
+  View, Text, StyleSheet, Pressable, ScrollView, Platform, Alert, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
+import { supabase } from '../../lib/supabase';
 import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
 import AdBanner from '../../components/AdBanner';
@@ -109,6 +110,7 @@ export default function StudentDashboard() {
     refreshData, logoutUser, setLoggedInUser,
   } = useApp();
   const [localDisplayName, setLocalDisplayName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
@@ -120,6 +122,11 @@ export default function StudentDashboard() {
       }
     });
     shouldShowOnboarding().then(setShowOnboarding);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('users').select('avatar_url').eq('auth_user_id', user.id).maybeSingle()
+        .then(({ data }) => { if (data?.avatar_url) setAvatarUrl(data.avatar_url); });
+    });
   }, [refreshData]);
 
   const tap = () => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
@@ -131,7 +138,8 @@ export default function StudentDashboard() {
   };
 
   const displayName = loggedInUser?.displayName || localDisplayName || 'there';
-  const firstName   = displayName.split(' ')[0];
+  const rawUsername = loggedInUser?.username || '';
+  const firstName = rawUsername.length > 10 ? 'Megoo' : (rawUsername || 'there');
 
   const limitActive    = spendingLimit?.isActive && (spendingLimit?.dailyLimit ?? 0) > 0;
   const limitUsedPct   = limitActive ? Math.min(todaySpent / spendingLimit!.dailyLimit, 1) : 0;
@@ -169,9 +177,17 @@ export default function StudentDashboard() {
             <Text style={s.hi}>{getGreeting()} 👋</Text>
             <Text style={s.name}>{firstName}</Text>
           </View>
-          <Pressable onPress={() => { tap(); router.push('/profile'); }} style={s.avatar}>
-            <Text style={s.avatarLetter}>{(firstName || 'S')[0].toUpperCase()}</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable onPress={() => { tap(); router.push('/help'); }} style={s.helpBtn}>
+              <Text style={s.helpBtnText}>Need Help?</Text>
+            </Pressable>
+            <Pressable onPress={() => { tap(); router.push('/profile'); }} style={s.avatar}>
+              {avatarUrl
+                ? <Image source={{ uri: avatarUrl }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                : <Text style={s.avatarLetter}>{(firstName || 'S')[0].toUpperCase()}</Text>
+              }
+            </Pressable>
+          </View>
         </View>
 
         {/* Balance block */}
@@ -379,6 +395,16 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarLetter: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  helpBtn: {
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12, paddingVertical: 6,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  helpBtnText: {
+    fontSize: 11, fontFamily: 'DMSans_700Bold', color: '#fff',
+  },
 
   balBlock: {
     backgroundColor: 'rgba(0,0,0,0.12)',

@@ -29,6 +29,7 @@ export default function SignupScreen() {
 
   const [email, setEmail]               = useState('');
   const [displayName, setDisplayName]   = useState('');
+  const [username, setUsername]         = useState('');
   const [mobile, setMobile]             = useState('');
   const [countryCode, setCountryCode]   = useState(COUNTRY_CODES[0]);
   const [showCCPicker, setShowCCPicker] = useState(false);
@@ -44,6 +45,8 @@ export default function SignupScreen() {
   const [showPinConfirm, setShowPinConfirm] = useState(false);
 
   const emailRef      = useRef<TextInput>(null);
+  const usernameRef   = useRef<TextInput>(null);
+  const fullNameRef   = useRef<TextInput>(null);
   const mobileRef     = useRef<TextInput>(null);
   const pinRef        = useRef<TextInput>(null);
   const pinConfirmRef = useRef<TextInput>(null);
@@ -52,6 +55,10 @@ export default function SignupScreen() {
 
   const handleInfoNext = () => {
     if (!displayName.trim()) { setError('Please enter your full name'); return; }
+    if (username.trim() && !/^[a-zA-Z0-9_.]{3,10}$/.test(username.trim())) {
+      setError('Username must be 3–20 characters and can only contain letters, numbers, underscores, or dots');
+      return;
+    }
     if (!email.trim() || !email.includes('@')) { setError('Please enter a valid email'); return; }
     if (mobile.trim() && !isValidMobile(mobile)) { setError('Mobile number must start with 09 and be exactly 11 digits'); return; }
     setError('');
@@ -66,7 +73,7 @@ export default function SignupScreen() {
     setError('');
     setIsSubmitting(true);
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const result = await signUpWithPinAndOTP(email.trim(), pin, displayName.trim(), role);
+    const result = await signUpWithPinAndOTP(email.trim(), pin, displayName.trim(), role, username.trim() || undefined);
     setIsSubmitting(false);
     if (result.success) {
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -98,7 +105,7 @@ export default function SignupScreen() {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setOtp(''); setError('');
     setIsSubmitting(true);
-    const result = await signUpWithPinAndOTP(email.trim(), pin, displayName.trim(), role);
+    const result = await signUpWithPinAndOTP(email.trim(), pin, displayName.trim(), role, username.trim() || undefined);
     setIsSubmitting(false);
     if (!result.success) setError(result.error || 'Failed to resend code');
   };
@@ -183,6 +190,7 @@ export default function SignupScreen() {
                 <View style={styles.inputRow}>
                   <Ionicons name="person-outline" size={20} color={Colors.textTertiary} style={styles.inputIcon} />
                   <TextInput
+                    ref={fullNameRef}
                     style={styles.input}
                     value={displayName}
                     onChangeText={(t) => { setDisplayName(t); setError(''); }}
@@ -190,9 +198,32 @@ export default function SignupScreen() {
                     placeholderTextColor={Colors.textTertiary}
                     autoCapitalize="words"
                     returnKeyType="next"
+                    onSubmitEditing={() => usernameRef.current?.focus()}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>
+                  Username
+                </Text>
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputIcon, { fontSize: 16, color: Colors.textTertiary, marginLeft: 14 }]}>@</Text>
+                  <TextInput
+                    ref={usernameRef}
+                    style={styles.input}
+                    value={username}
+                    onChangeText={(t) => { setUsername(t.replace(/\s/g, '')); setError(''); }}
+                    placeholder="your_username"
+                    placeholderTextColor={Colors.textTertiary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    maxLength={10}
                     onSubmitEditing={() => emailRef.current?.focus()}
                   />
                 </View>
+                <Text style={styles.fieldHint}>Shown instead of your name if set. Letters, numbers, _ and . only.</Text>
               </View>
 
               <View style={styles.inputGroup}>

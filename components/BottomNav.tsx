@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -25,73 +25,20 @@ interface NavItem {
   route: string;
 }
 
+// Help removed — now lives in the header as a ? icon
 const guardianItems: NavItem[] = [
-  {
-    key: 'home',
-    label: 'Home',
-    icon: 'home-outline',
-    activeIcon: 'home',
-    route: '/guardian',
-  },
-  {
-    key: 'history',
-    label: 'History',
-    icon: 'receipt-outline',
-    activeIcon: 'receipt',
-    route: '/guardian/history',
-  },
-  {
-    key: 'schedule',
-    label: 'Schedule',
-    icon: 'calendar-outline',
-    activeIcon: 'calendar',
-    route: '/guardian/schedule',
-  },
-  {
-    key: 'limit',
-    label: 'Limits',
-    icon: 'shield-outline',
-    activeIcon: 'shield',
-    route: '/guardian/spending-limit',
-  },
-  {
-    key: 'goals',
-    label: 'Goals',
-    icon: 'flag-outline',
-    activeIcon: 'flag',
-    route: '/guardian/goals',
-  },
+  { key: 'home',     label: 'Home',     icon: 'home-outline',     activeIcon: 'home',     route: '/guardian' },
+  { key: 'history',  label: 'History',  icon: 'receipt-outline',  activeIcon: 'receipt',  route: '/guardian/history' },
+  { key: 'schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar', route: '/guardian/schedule' },
+  { key: 'limit',    label: 'Limits',   icon: 'shield-outline',   activeIcon: 'shield',   route: '/guardian/spending-limit' },
+  { key: 'goals',    label: 'Goals',    icon: 'flag-outline',     activeIcon: 'flag',     route: '/guardian/goals' },
 ];
 
 const studentItems: NavItem[] = [
-  {
-    key: 'home',
-    label: 'Home',
-    icon: 'home-outline',
-    activeIcon: 'home',
-    route: '/student',
-  },
-  {
-    key: 'expense',
-    label: 'Expense',
-    icon: 'remove-circle-outline',
-    activeIcon: 'remove-circle',
-    route: '/student/expense',
-  },
-  {
-    key: 'goals',
-    label: 'Goals',
-    icon: 'flag-outline',
-    activeIcon: 'flag',
-    route: '/student/goals',
-  },
-  {
-    key: 'history',
-    label: 'History',
-    icon: 'receipt-outline',
-    activeIcon: 'receipt',
-    route: '/student/history',
-  },
+  { key: 'home',    label: 'Home',    icon: 'home-outline',          activeIcon: 'home',          route: '/student' },
+  { key: 'expense', label: 'Expense', icon: 'remove-circle-outline', activeIcon: 'remove-circle', route: '/student/expense' },
+  { key: 'goals',   label: 'Goals',   icon: 'flag-outline',          activeIcon: 'flag',          route: '/student/goals' },
+  { key: 'history', label: 'History', icon: 'receipt-outline',       activeIcon: 'receipt',       route: '/student/history' },
 ];
 
 function NavTab({
@@ -147,8 +94,7 @@ export default function BottomNav({ userType, onLogout }: BottomNavProps) {
   const accentColor = isGuardian ? Colors.guardianGradientStart : Colors.studentPrimary;
   const items = isGuardian ? guardianItems : studentItems;
 
-  // Determine active tab — exact match for home, startsWith for others
-  const activeKey = items.find(item => {
+  const activeKey = items.find((item) => {
     if (item.key === 'home') return pathname === item.route;
     return pathname.startsWith(item.route);
   })?.key ?? 'home';
@@ -157,16 +103,12 @@ export default function BottomNav({ userType, onLogout }: BottomNavProps) {
     <View
       style={[
         styles.container,
-        {
-          paddingBottom: Platform.OS === 'web' ? 12 : Math.max(insets.bottom, 8),
-        },
+        { paddingBottom: Platform.OS === 'web' ? 12 : Math.max(insets.bottom, 8) },
       ]}
     >
-      {/* Subtle top border */}
       <View style={styles.topBorder} />
-
       <View style={styles.row}>
-        {items.map(item => (
+        {items.map((item) => (
           <NavTab
             key={item.key}
             item={item}
@@ -195,45 +137,15 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 12,
   },
-  topBorder: {
-    height: 1,
-    backgroundColor: Colors.border,
-    opacity: 0.6,
-  },
-  row: {
-    flexDirection: 'row',
-    paddingTop: 6,
-    paddingHorizontal: 4,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-  },
+  topBorder: { height: 1, backgroundColor: Colors.border, opacity: 0.6 },
+  row: { flexDirection: 'row', paddingTop: 6, paddingHorizontal: 4 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
   tabInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    position: 'relative',
-    minWidth: 56,
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 6, paddingHorizontal: 8,
+    borderRadius: 14, position: 'relative', minWidth: 48,
   },
-  activePill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 14,
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontFamily: 'DMSans_500Medium',
-    marginTop: 3,
-  },
-  tabLabelActive: {
-    fontFamily: 'DMSans_700Bold',
-  },
+  activePill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 },
+  tabLabel: { fontSize: 10, fontFamily: 'DMSans_500Medium', marginTop: 3 },
+  tabLabelActive: { fontFamily: 'DMSans_700Bold' },
 });

@@ -3,6 +3,11 @@ import { AppState, AppStateStatus } from 'react-native';
 import { router } from 'expo-router';
 import * as Storage from './storage';
 import { supabase } from './supabase';
+
+// Global callback — WalliChat registers this, AppContext calls it on logout
+// Avoids circular import between AppContext ↔ WalliChat
+export let onLogoutCallback: (() => void) | null = null;
+export function registerWalliLogoutCallback(cb: () => void) { onLogoutCallback = cb; }
 import type { UserRole, AllowanceConfig, Transaction, SavingsGoal, LoggedInUser, SpendingLimit } from './storage';
 import { shouldRequireOTP, updateLastActive } from '../app/otp-verify';
 import {
@@ -315,6 +320,9 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     lastLoadedSessionIdRef.current = null;
     try { await removePushToken(); } catch { /* ignore */ }
 
+    // Clear Walli chat history
+    if (onLogoutCallback) onLogoutCallback();
+
     // 2. Clear all local state immediately so the UI reacts right away.
     setLoggedInUserState(null);
     setRole(null);
@@ -323,13 +331,18 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     setSelectedStudentId(null);
     selectedStudentIdRef.current = null;
     setNeedsOTP(false);
+    setIsLoading(false);
 
-    // 3. Navigate to login immediately — don't wait for the SIGNED_OUT event.
-    router.replace('/login');
+    // 3. Clear AsyncStorage user BEFORE signOut so the SIGNED_OUT event handler
+    //    (which also calls Storage.setLoggedInUser(null)) is a safe no-op even if
+    //    it fires after router.replace('/login') has already run.
+    try { await Storage.setLoggedInUser(null); } catch { /* ignore */ }
 
-    // 4. Sign out of Supabase in the background. The SIGNED_OUT event will
-    //    fire but our handler is a no-op (state already cleared above).
+    // 4. Sign out of Supabase so the session token is invalidated.
     try { await Storage.signOut(); } catch { /* ignore */ }
+
+    // 5. Navigate to login — SIGNED_OUT event handler is a no-op (state already cleared).
+    router.replace('/login');
   }, []);
 
   const setUserRole = useCallback(async (newRole: UserRole) => {

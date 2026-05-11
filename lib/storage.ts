@@ -52,7 +52,9 @@ export interface LoggedInUser {
   id: string;
   email: string;
   displayName: string;
+  username?: string;
   phoneNumber?: string;
+  avatarUrl?: string;
   role: UserRole;
   linkedUserIds: string[];
   isLinked: boolean;
@@ -86,16 +88,19 @@ export async function signUpWithPinAndOTP(
   email: string,
   pin: string,
   displayName: string,
-  role: 'guardian' | 'student'
+  role: 'guardian' | 'student',
+  username?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!/^\d{6}$/.test(pin)) {
       return { success: false, error: 'PIN must be exactly 6 digits' };
     }
 
-    // Build username before signUp so the trigger can read it from user_metadata
+    // Build username: use provided username if given, else derive from email
     const emailUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-    const tempUsername = `${emailUsername}_${Date.now().toString(36)}`;
+    const tempUsername = username?.trim()
+      ? username.trim().toLowerCase()
+      : `${emailUsername}_${Date.now().toString(36)}`;
 
     // Check if email already exists in public.users before attempting signUp
     const { data: existingUser } = await supabase
@@ -153,7 +158,9 @@ export async function signUpWithPinAndOTP(
     }
 
     // Use the real user id now that we have it
-    const uniqueUsername = `${emailUsername}_${authData.user.id.substring(0, 8)}`;
+    const uniqueUsername = username?.trim()
+      ? username.trim().toLowerCase()
+      : `${emailUsername}_${authData.user.id.substring(0, 8)}`;
 
     const { data: existingProfile } = await supabase
       .from('users')
@@ -351,7 +358,9 @@ export async function verifyOTP(
       id: profile.id,
       email: profile.email,
       displayName: profile.display_name,
+      username: profile.username || undefined,
       phoneNumber: profile.phone_number || undefined,
+      avatarUrl: profile.avatar_url || undefined,
       role: profile.role as UserRole,
       linkedUserIds: linkedUserIds,
       isLinked: linkedUserIds.length > 0,
@@ -497,7 +506,9 @@ export async function signInWithPin(
       id: effectiveId,
       email: userProfile.email,
       displayName: userProfile.display_name,
+      username: userProfile.username || undefined,
       phoneNumber: userProfile.phone_number || undefined,
+      avatarUrl: userProfile.avatar_url || undefined,
       role: userProfile.role as UserRole,
       linkedUserIds: linkedUserIds,
       isLinked: linkedUserIds.length > 0,
@@ -580,7 +591,9 @@ export async function signInFromSession(
       id: effectiveId,
       email: profile.email || sessionUser.email || '',
       displayName: profile.display_name || sessionUser.user_metadata?.display_name || 'User',
+      username: profile.username || undefined,
       phoneNumber: profile.phone_number || sessionUser.user_metadata?.phone || undefined,
+      avatarUrl: profile.avatar_url || undefined,
       role: (profile.role || sessionUser.user_metadata?.role || 'student') as UserRole,
       linkedUserIds,
       isLinked: linkedUserIds.length > 0,

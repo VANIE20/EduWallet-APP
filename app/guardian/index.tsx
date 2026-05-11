@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
-  Platform, Alert, Modal, Dimensions,
+  Platform, Alert, Modal, Dimensions, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Colors from '../../constants/colors';
 import { useApp } from '../../lib/AppContext';
 import { getLoggedInUser } from '../../lib/storage';
+import { supabase } from '../../lib/supabase';
 import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
 import AdBanner from '../../components/AdBanner';
@@ -105,6 +106,7 @@ export default function GuardianDashboard() {
     linkedStudents, selectedStudentId, selectStudent,
   } = useApp();
   const [localDisplayName, setLocalDisplayName] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -117,6 +119,11 @@ export default function GuardianDashboard() {
       }
     });
     shouldShowOnboarding().then(show => setShowOnboarding(show));
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('users').select('avatar_url').eq('auth_user_id', user.id).maybeSingle()
+        .then(({ data }) => { if (data?.avatar_url) setAvatarUrl(data.avatar_url); });
+    });
   }, [refreshData]);
 
   const guardianTransactions = transactions
@@ -135,7 +142,8 @@ export default function GuardianDashboard() {
   };
 
   const displayName = loggedInUser?.displayName || localDisplayName || 'there';
-  const firstName = displayName.split(' ')[0];
+  const rawUsername = loggedInUser?.username || '';
+  const firstName = rawUsername.length > 10 ? 'Megoo' : (rawUsername || 'there');
   const selectedStudent = linkedStudents.find(s => s.id === selectedStudentId);
   const selectedStudentName = selectedStudent?.displayName || 'Student';
   const hasMultiple = linkedStudents.length > 1;
@@ -175,9 +183,17 @@ export default function GuardianDashboard() {
             <Text style={s.greetingSmall}>{getTimeOfDay()} 👋</Text>
             <Text style={s.greeting}>{firstName}</Text>
           </View>
-          <Pressable onPress={() => { tap(); router.push('/profile'); }} style={s.avatarBtn}>
-            <Text style={s.avatarText}>{(displayName || 'U')[0].toUpperCase()}</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable onPress={() => router.push('/help')} style={s.helpBtn}>
+              <Text style={s.helpBtnText}>Need Help?</Text>
+            </Pressable>
+            <Pressable onPress={() => { tap(); router.push('/profile'); }} style={s.avatarBtn}>
+              {avatarUrl
+                ? <Image source={{ uri: avatarUrl }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                : <Text style={s.avatarText}>{(displayName || 'U')[0].toUpperCase()}</Text>
+              }
+            </Pressable>
+          </View>
         </View>
 
         {/* Balance split card */}
@@ -543,6 +559,16 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  helpBtn: {
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12, paddingVertical: 6,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  helpBtnText: {
+    fontSize: 11, fontFamily: 'DMSans_700Bold', color: '#fff',
   },
   avatarText: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: '#fff' },
 

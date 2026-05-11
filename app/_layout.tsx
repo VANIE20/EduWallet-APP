@@ -5,6 +5,8 @@ import * as Updates from 'expo-updates';
 import { AppProvider } from '../lib/AppContext';
 
 async function applyUpdate() {
+  // checkForUpdateAsync() is not supported in Expo Go — skip in dev builds
+  if (__DEV__) return;
   try {
     const update = await Updates.checkForUpdateAsync();
     if (update.isAvailable) {
@@ -35,7 +37,9 @@ export default function RootLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="guardian" />
         <Stack.Screen name="student" />
-        <Stack.Screen name="changelog" options={{ presentation: "modal" }} />
+        <Stack.Screen name="changelog" options={{ presentation: 'modal' }} />
+        {/* ── Help Center ── */}
+        <Stack.Screen name="help" />
       </Stack>
     </AppProvider>
   );

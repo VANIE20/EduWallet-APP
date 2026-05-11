@@ -1,35 +1,30 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useApp } from '../lib/AppContext';
 
 export default function Index() {
-  const { role, isLoading, loggedInUser, isLinked } = useApp();
+  const { isLoading, loggedInUser, role } = useApp();
 
   useEffect(() => {
     if (isLoading) return;
 
     if (!loggedInUser) {
       router.replace('/login');
-      return;
-    }
-
-    // isLinked is set by refreshUserLinkStatus which runs on auth state change.
-    // Route to dashboard if linked, otherwise link-required screen.
-    if (isLinked) {
-      if (role === 'guardian') {
-        router.replace('/guardian');
-      } else if (role === 'student') {
-        router.replace('/student');
-      }
+    } else if (role === 'guardian') {
+      router.replace('/guardian');
     } else {
-      router.replace('/link-required');
+      router.replace('/student');
     }
-  }, [isLoading, role, loggedInUser, isLinked]);
+  }, [isLoading, loggedInUser, role]);
 
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#800000" />
+    <View style={s.root}>
+      <ActivityIndicator size="large" color="#C84B00" />
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF8F2' },
+});

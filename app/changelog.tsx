@@ -14,9 +14,26 @@ interface Release { version: string; date: string; label?: string; entries: Entr
 
 const CHANGELOG: Release[] = [
   {
+    version: '1.6.0',
+    date: 'May 11, 2026',
+    label: 'Latest',
+    entries: [
+      { type: 'new',         text: 'Walli AI Assistant — a built-in AI-powered help chatbot accessible from the Help Center, powered by Claude.' },
+      { type: 'new',         text: 'Walli automatically saves support conversations as tickets in the database so issues are tracked and can be reviewed.' },
+      { type: 'new',         text: 'Help Center screen redesigned with a dedicated chat interface for Walli, replacing the old static FAQ.' },
+      { type: 'new',         text: 'Avatar upload — users can now set a profile photo from their photo library on the Profile screen.' },
+      { type: 'new',         text: 'Avatar is stored in Supabase Storage and persists across sessions and app restarts.' },
+      { type: 'improvement', text: 'Guardian and Student dashboards now show the profile avatar photo in the top-right corner instead of a letter initial.' },
+      { type: 'improvement', text: 'Profile screen shows the avatar image with a camera button overlay; tapping it opens the photo picker.' },
+      { type: 'fix',         text: 'Fixed "bucket not found" error on avatar upload — storage bucket and RLS policies corrected.' },
+      { type: 'fix',         text: 'Fixed avatar not saving to database — RLS UPDATE policy now matches on auth_user_id instead of id.' },
+      { type: 'fix',         text: 'Fixed avatar disappearing after reload — loadAvatar now correctly queries by auth_user_id.' },
+      { type: 'fix',         text: 'Fixed deprecated ImagePicker.MediaTypeOptions — updated to use string array format.' },
+    ],
+  },
+  {
     version: '1.5.0',
     date: 'May 10, 2026',
-    label: 'Latest',
     entries: [
       { type: 'new',         text: 'Guardian can now remove a linked student — requires OTP email verification before the unlink is processed.' },
       { type: 'new',         text: 'After removing all students, guardian is prompted to cash out their wallet balance or invite a new student.' },

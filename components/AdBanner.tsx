@@ -1,105 +1,120 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Image, StyleSheet, Animated, Dimensions, Pressable, ViewStyle,
+  View,
+  Image,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  ViewStyle,
 } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const AD_HEIGHT = SCREEN_WIDTH * 0.4;
 
 const ADS = [
   require('../assets/ad-eduwallet.png'),
   require('../assets/ad1-eduwallet.png'),
+  require('../assets/ad2-eduwallet.png'),
+  require('../assets/ad3-eduwallet.png'),
 ];
 
-const AD_INTERVAL = 6000;
+const AD_PROMOS = [
+  { badge: 'LIMITED OFFER', headline: 'Send Allowance FREE', badgeColor: '#FF4D4D' },
+  { badge: 'FLASH SALE', headline: '50% Savings Bonus!', badgeColor: '#F59E0B' },
+  { badge: 'EXCLUSIVE', headline: 'Free Cash-G Cash Out', badgeColor: '#10B981' },
+  { badge: 'PROMO', headline: 'Double Your Goal!', badgeColor: '#6B0F1A' },
+];
+
+const AD_INTERVAL = 4000;
 
 interface AdBannerProps {
-  width?: number | `${number}%`;   // default: full screen width (edge-to-edge)
-  height?: number;                  // default: 160
-  borderRadius?: number;            // default: 0 for full-width, 16 for custom size
-  style?: ViewStyle;                // extra wrapper styles if needed
+  style?: ViewStyle;
 }
 
-export default function AdBanner({
-  width,
-  height = 160,
-  borderRadius,
-  style,
-}: AdBannerProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+export default function AdBanner({ style }: AdBannerProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isScrolling = useRef(false);
 
-  // If no width given → bleed edge-to-edge; otherwise use the given width
-  const isFullWidth = width === undefined;
-  const resolvedRadius = borderRadius ?? (isFullWidth ? 0 : 16);
+  const scrollTo = useCallback((index: number) => {
+    const clamped = Math.max(0, Math.min(index, ADS.length - 1));
+    scrollRef.current?.scrollTo({ x: clamped * SCREEN_WIDTH, animated: true });
+    setActiveIndex(clamped);
+  }, []);
 
-  const containerStyle: ViewStyle = isFullWidth
-    ? {
-        width: SCREEN_WIDTH,
-        marginHorizontal: -24,   // bleed past parent's 24px padding
-      }
-    : {
-        width: width as any,
-        alignSelf: 'center',
-      };
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 450,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentIndex(prev => (prev + 1) % ADS.length);
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration:450,
-          useNativeDriver: true,
-        }).start();
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      if (isScrolling.current) return;
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % ADS.length;
+        scrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH, animated: true });
+        return next;
       });
     }, AD_INTERVAL);
+  }, []);
 
-    return () => clearInterval(timer);
-  }, [fadeAnim]);
+  useEffect(() => {
+    startTimer();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [startTimer]);
 
-  const goTo = (index: number) => {
-    if (index === currentIndex) return;
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start(() => {
-      setCurrentIndex(index);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }).start();
-    });
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / SCREEN_WIDTH);
+    setActiveIndex(index);
+    isScrolling.current = false;
+    startTimer();
   };
 
-  return (
-    <View style={[containerStyle, style]}>
-      <Animated.View
-        style={{
-          width: '100%',
-          height,
-          borderRadius: resolvedRadius,
-          overflow: 'hidden',
-          opacity: fadeAnim,
-        }}
-      >
-        <Image
-          source={ADS[currentIndex]}
-          style={styles.image}
-          resizeMode="stretch"
-        />
-      </Animated.View>
+  const onScrollBegin = () => {
+    isScrolling.current = true;
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
 
-      {/* Dot indicators */}
+  const promo = AD_PROMOS[activeIndex];
+
+  return (
+    <View style={[styles.wrapper, style]}>
+      {/* Image slider */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={onScrollBegin}
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEventThrottle={16}
+        style={{ width: SCREEN_WIDTH }}
+      >
+        {ADS.map((ad, i) => (
+          <Image
+            key={i}
+            source={ad}
+            style={{ width: SCREEN_WIDTH, height: AD_HEIGHT }}
+            resizeMode="cover"
+          />
+        ))}
+      </ScrollView>
+
+      {/* Promo row */}
+      <View style={styles.promoRow}>
+        <View style={[styles.badge, { backgroundColor: promo.badgeColor }]}>
+          <Text style={styles.badgeText}>{promo.badge}</Text>
+        </View>
+        <Text style={styles.headline} numberOfLines={1}>{promo.headline}</Text>
+      </View>
+
+      {/* Dots centered below promo */}
       <View style={styles.dots}>
         {ADS.map((_, i) => (
-          <Pressable key={i} onPress={() => goTo(i)} hitSlop={8}>
-            <View style={[styles.dot, i === currentIndex && styles.dotActive]} />
+          <Pressable key={i} onPress={() => scrollTo(i)} hitSlop={8}>
+            <View style={[styles.dot, i === activeIndex && styles.dotActive]} />
           </Pressable>
         ))}
       </View>
@@ -108,16 +123,44 @@ export default function AdBanner({
 }
 
 const styles = StyleSheet.create({
-  image: {
-    height: '100%',
+  wrapper: {
+    padding: 8,
     width: '100%',
+    alignItems: 'center',
+  },
+  promoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 2,
+    gap: 6,
+    width: SCREEN_WIDTH,
+  },
+  badge: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    letterSpacing: 0.3,
+  },
+  headline: {
+    flex: 1,
+    color: '#1a1a1a',
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
   },
   dots: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
   },
   dot: {
     width: 6,
@@ -126,8 +169,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E1',
   },
   dotActive: {
-    width: 18,
-    backgroundColor: '#475569',
+    width: 14,
+    height: 6,
     borderRadius: 3,
+    backgroundColor: '#6B0F1A',
   },
 });
