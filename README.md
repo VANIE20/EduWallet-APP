@@ -132,134 +132,100 @@ components/
 
 ---
 
-# EduWallet Changelog
-
-## v1.5.0 — May 10, 2026 `Latest`
-
-### ✨ New
-
-* Guardian can now remove a linked student — requires OTP email verification before the unlink is processed.
-* After removing all students, guardian is prompted to cash out their wallet balance or invite a new student.
-* Student goal deadline replaced with a manual date picker — set any exact date up to 20 years ahead, no more preset week/month buttons.
-* Deadline countdown now shows `"X days remaining"` for near dates and `"X months remaining"` for far dates.
-* Date picker enforces boundaries: past dates are blocked, maximum is 20 years from today.
-
-### 📈 Improvements
-
-* Linked Students card now shows for single students too, with a remove button next to each name.
-* Expense screen now unified — Cash Out removed as a separate tab; all payouts processed through E-Wallet directly from the Expense screen.
-* Guardian dashboard redesigned with a maroon color theme (deep gradient, maroon accents, warm rose stat pills).
-* Student dashboard redesigned with a warm ember/burnt orange color theme replacing the previous dark palette.
-* Both dashboards now show up to 7 recent transactions instead of 5.
-* Transaction history screens now show a Daily Activity bar chart for the last 7 days.
-* Warning badges (low/no balance) now use an icon + text row for a cleaner look.
-* Ad banner repositioned to sit between content sections for a more natural flow.
-
-### 🛠 Fixes
-
-* Fixed OTA update error in Expo Go: `checkForUpdateAsync()` now only runs in production builds.
-* Ad banner image now fills its container correctly — removed offset margin and stray border that caused it to appear crooked.
-* Balance and currency amounts now shrink to fit on one line instead of wrapping or pushing layout down.
-* Scroll content on both dashboards now ends at the last item with no excess blank space below.
-
----
-
-## v1.4.0 — May 8, 2026
-
-### ✨ New
-
-* Push notifications — get alerted when allowance is sent, money is spent, deposit succeeds, or spending limit is near.
-* Firebase FCM V1 integrated for reliable Android push delivery.
-
-### 📈 Improvements
-
-* Push token saved to Supabase on login and removed on logout.
-
-### 🛠 Fixes
-
-* Student balance no longer resets to old value after guardian sends allowance.
-* All wallet operations now fetch fresh balance from DB instead of stale cached value.
-* Fixed RLS policy blocking push token save to `push_tokens` table.
-
----
-
-## v1.3.0 — May 7, 2026
-
-### ✨ New
-
-* Guardian can now lock a student's savings goal to prevent early withdrawals.
-* Guardian can send a Bonus directly into any of the student's savings goals.
-* Transaction history now shows the correct student name per allowance, supporting multiple students.
-
-### 🛠 Fixes
-
-* `toUserId` and `fromUserId` added to Transaction type for correct history tracking.
-* Bonus and lock actions now correctly update goals in real time.
-* Removed deprecated notification flag causing warnings on newer Expo versions.
-
----
-
-## v1.2.0 — April 28, 2026
-
-### 🛠 Fixes
-
-* Fixed `"not linked"` status showing for linked accounts due to UUID mismatch.
-* Fixed link-required screen reappearing after sign out and re-login.
-* Invite acceptance now falls back to direct insert if RPC fails.
-* Removed duplicate `isLinked` useEffect causing race conditions.
-* State now clears immediately on `SIGNED_OUT`.
-* `login.tsx` and `otp-verify.tsx` now use proper dual-UUID lookup.
-* `user_links` insert no longer fails with `"column status does not exist"` error.
-
----
-
-## v1.1.0 — April 20, 2026
-
-### ✨ New
-
-* Forgot PIN screen with OTP email verification.
-* Profile screen for editing name, email, phone, and PIN.
-
-### 📈 Improvements
-
-* Guardian dashboard now supports quick-switch between linked students.
-* Email change now requires a phone number for security verification.
-
-### 🛠 Fixes
-
-* `setLoggedInUser(null)` TypeScript issue fixed.
-* Sign out now uses `logoutUser()` from context.
-* OTP gate now correctly restores `needsOTP` after session checks.
-
-### 🔒 Security
-
-* PayMongo secret key moved from hardcoded string to environment variable.
-
----
-
-## v1.0.1 — April 10, 2026
-
-### 🛠 Fixes
-
-* Goal Name input fixed in student add-goal screen.
-* Guardian goals screen now routes correctly.
-* Removed unused Animated and FadeInDown imports.
-* Fixed `useRef` type error in deposit screen.
-* Fixed React version mismatch causing APK crash.
-
----
-
-## v1.0.0 — April 1, 2026
-
-### ✨ Initial Release
-
-* Guardian wallet with PayMongo deposits and allowance transfers.
-* Student wallet with expense logging.
-* Spending limit controls for budgeting.
-* Savings goals with progress tracking.
-* Transaction history for guardian and student.
-* Guardian ↔ student linking via invite email.
-* 6-digit PIN login with OTP email verification.
+EduWallet Changelog
+v1.6.0 — May 11, 2026 Latest
+✨ New
+Walli AI Assistant — a built-in AI-powered help chatbot accessible from the Help Center, powered by Claude.
+Walli automatically saves support conversations as tickets in the database so issues are tracked and can be reviewed.
+Help Center screen redesigned with a dedicated chat interface for Walli, replacing the old static FAQ.
+Avatar upload — users can now set a profile photo from their photo library on the Profile screen.
+Avatar is stored in Supabase Storage and persists across sessions and app restarts.
+📈 Improvements
+Guardian and Student dashboards now show the profile avatar photo in the top-right corner instead of a letter initial.
+Profile screen shows the avatar image with a camera button overlay; tapping it opens the photo picker.
+🛠 Fixes
+Fixed "bucket not found" error on avatar upload — storage bucket and RLS policies corrected.
+Fixed avatar not saving to database — RLS UPDATE policy now matches on auth_user_id instead of id.
+Fixed avatar disappearing after reload — loadAvatar now correctly queries by auth_user_id.
+Fixed deprecated ImagePicker.MediaTypeOptions — updated to use string array format.
+v1.5.0 — May 10, 2026
+✨ New
+Guardian can now remove a linked student — requires OTP email verification before the unlink is processed.
+After removing all students, guardian is prompted to cash out their wallet balance or invite a new student.
+Student goal deadline replaced with a manual date picker — set any exact date up to 20 years ahead, no more preset week/month buttons.
+Deadline countdown now shows "X days remaining" for near dates and "X months remaining" for far dates.
+Date picker enforces boundaries: past dates are blocked, maximum is 20 years from today.
+📈 Improvements
+Linked Students card now shows for single students too, with a remove button next to each name.
+Expense screen now unified — Cash Out removed as a separate tab; all payouts processed through E-Wallet directly from the Expense screen.
+Guardian dashboard redesigned with a maroon color theme.
+Student dashboard redesigned with a warm ember/burnt orange color theme.
+Both dashboards now show up to 7 recent transactions instead of 5.
+Transaction history screens now show a Daily Activity bar chart for the last 7 days.
+Warning badges (low/no balance) now use an icon + text row for a cleaner look.
+Ad banner repositioned to sit between content sections for a more natural flow.
+🛠 Fixes
+Fixed OTA update error in Expo Go: checkForUpdateAsync() now only runs in production builds.
+Ad banner image now fills its container correctly.
+Balance and currency amounts now shrink to fit on one line.
+Scroll content on both dashboards now ends at the last item with no excess blank space below.
+v1.4.0 — May 8, 2026
+✨ New
+Push notifications for allowance, spending, deposits, and spending limits.
+Firebase FCM V1 integrated for reliable Android push delivery.
+📈 Improvements
+Push token saved to Supabase on login and removed on logout.
+🛠 Fixes
+Student balance no longer resets after allowance transfers.
+Wallet operations now fetch fresh balance from DB instead of stale cached values.
+Fixed RLS policy blocking push token saves to push_tokens.
+v1.3.0 — May 7, 2026
+✨ New
+Guardian can lock a student’s savings goal.
+Guardian can send bonuses directly into savings goals.
+Transaction history now correctly shows student names for multiple students.
+🛠 Fixes
+Added toUserId and fromUserId to Transaction type.
+Bonus and lock actions now update goals in real time.
+Removed deprecated Expo notification flag warning.
+v1.2.0 — April 28, 2026
+🛠 Fixes
+Fixed linked-account UUID mismatch issue.
+Fixed link-required screen reappearing after re-login.
+Invite acceptance now falls back to direct insert if RPC fails.
+Removed duplicate isLinked useEffect race condition.
+State now clears immediately on SIGNED_OUT.
+Fixed dual-UUID lookup in login.tsx and otp-verify.tsx.
+Fixed user_links insert error: "column status does not exist".
+v1.1.0 — April 20, 2026
+✨ New
+Forgot PIN screen with OTP verification.
+Profile editing screen for name, email, phone, and PIN.
+📈 Improvements
+Guardian dashboard now supports quick-switching between linked students.
+Email changes now require a phone number for verification.
+🛠 Fixes
+Fixed setLoggedInUser(null) TypeScript issue.
+Sign out now uses logoutUser() from context.
+OTP gate now properly restores needsOTP.
+🔒 Security
+PayMongo secret key moved to environment variables.
+v1.0.1 — April 10, 2026
+🛠 Fixes
+Fixed Goal Name input binding issue.
+Fixed guardian goals screen navigation route.
+Removed unused Animated/FadeInDown imports.
+Fixed useRef type error in deposit screen.
+Fixed React version mismatch causing APK crashes.
+v1.0.0 — April 1, 2026
+🚀 Initial Release
+Guardian wallet with PayMongo deposits and allowance transfers.
+Student wallet with expense tracking.
+Spending limit controls.
+Savings goals with progress tracking.
+Transaction history system.
+Guardian ↔ student linking via invite email.
+6-digit PIN login with OTP verification.
 
 
 ---
