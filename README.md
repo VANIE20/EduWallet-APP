@@ -323,18 +323,3 @@ Fixed guardian_update_goal_amount RPC always returning false (auth.uid() fix)
 - If you're switching from an old build to a new one, uninstall the old APK first to avoid conflicts
 
 
-# EduWallet-APP
-
-git add . 
-
-git commit -m " V1.4.0 " 
-
-git push origin main 
-
-
-
-
-
-eas update --channel preview --message "ChangeLog"
-
-eas build -p android --profile preview
