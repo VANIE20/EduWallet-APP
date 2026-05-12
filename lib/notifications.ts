@@ -240,6 +240,21 @@ export async function notifySpendingLimitWarning(
   );
 }
 
+// Called when student hits or exceeds their daily spending limit -- notifies guardian
+export async function notifyGuardianLimitExceeded(
+  guardianUserId: string,
+  studentName: string,
+  todaySpent: number,
+  dailyLimit: number
+): Promise<void> {
+  await sendPushNotification(
+    guardianUserId,
+    '🚨 Spending Limit Reached',
+    `${studentName} has reached their daily limit of ₱${dailyLimit.toLocaleString('en-PH', { minimumFractionDigits: 2 })} (spent ₱${todaySpent.toLocaleString('en-PH', { minimumFractionDigits: 2 })} today)`,
+    { type: 'spending_limit_exceeded', todaySpent, dailyLimit }
+  );
+}
+
 // Called when guardian sends a bonus contribution to a student's goal
 export async function notifyGoalBonus(
   studentUserId: string,

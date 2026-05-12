@@ -82,8 +82,10 @@ export default function LoginScreen() {
       const actuallyLinked = !linkError && Array.isArray(linkData) && linkData.length > 0;
 
       if (!actuallyLinked) {
+        try { router.dismissAll(); } catch { /* ignore */ }
         router.replace('/link-required');
       } else {
+        try { router.dismissAll(); } catch { /* ignore */ }
         router.replace(result.user!.role === 'guardian' ? '/guardian' : '/student');
       }
     }, 150);

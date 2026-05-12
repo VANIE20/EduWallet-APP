@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import { isTestAccount, PERMANENT_OTP } from './testAccount';
 
 // Local storage keys for offline/cache
 const KEYS = {
@@ -16,7 +17,8 @@ export interface SpendingLimit {
 export interface AllowanceConfig {
   amount: number;
   frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
-  dayOfWeek: number;
+  dayOfWeek: number;   // 0=Sun … 6=Sat (used for weekly/biweekly)
+  sendHour: number;    // 0–23, hour of day to send (local time)
   isActive: boolean;
 }
 
@@ -189,20 +191,85 @@ export async function signUpWithPinAndOTP(
       }
     }
 
-    const { error: otpError } = await supabase.auth.signInWithOtp({
-      email: email,
-      options: {
-        shouldCreateUser: false,
+    // Skip sending OTP email for test accounts -- they use a permanent code
+    if (!isTestAccount(email)) {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          shouldCreateUser: false,
+        }
+      });
+      if (otpError) {
+        console.warn('OTP send failed:', otpError);
       }
-    });
-
-    if (otpError) {
-      console.warn('OTP send failed:', otpError);
     }
 
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+// Helper: build a LoggedInUser from an already-authenticated Supabase user object.
+// Used by both verifyOTP (normal flow) and the test-account bypass.
+async function _buildVerifiedUser(
+  authUser: any,
+  roleOverride?: 'guardian' | 'student'
+): Promise<{ user: LoggedInUser | null; success: boolean; error?: string }> {
+  try {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const { data: freshAuthData } = await supabase.auth.getUser();
+    const resolvedUser = freshAuthData?.user || authUser;
+    const metaDisplayName = resolvedUser.user_metadata?.display_name || authUser.user_metadata?.display_name || '';
+
+    let profile: any = null;
+    const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).maybeSingle();
+    if (byId) {
+      profile = byId;
+    } else {
+      const { data: byAuthId } = await supabase.from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle();
+      profile = byAuthId;
+    }
+
+    if (profile && metaDisplayName && (!profile.display_name || profile.display_name === 'User')) {
+      await supabase.from('users').update({ display_name: metaDisplayName }).eq('id', profile.id);
+      profile = { ...profile, display_name: metaDisplayName };
+    }
+    if (profile && roleOverride && profile.role !== roleOverride) {
+      await supabase.from('users').update({ role: roleOverride }).eq('id', profile.id);
+      profile = { ...profile, role: roleOverride };
+    }
+
+    if (!profile) {
+      return { user: null, success: false, error: 'User profile not found' };
+    }
+
+    const { data: links } = await supabase
+      .from('user_links')
+      .select('guardian_id, student_id')
+      .or(`guardian_id.eq.${profile.id},student_id.eq.${profile.id}`);
+
+    const linkedUserIds: string[] = [];
+    links?.forEach((link: any) => {
+      if (link.guardian_id === profile.id && link.student_id) linkedUserIds.push(link.student_id);
+      if (link.student_id === profile.id && link.guardian_id) linkedUserIds.push(link.guardian_id);
+    });
+
+    const user: LoggedInUser = {
+      id: profile.id,
+      email: profile.email,
+      displayName: profile.display_name,
+      username: profile.username || undefined,
+      phoneNumber: profile.phone_number || undefined,
+      avatarUrl: profile.avatar_url || undefined,
+      role: profile.role as UserRole,
+      linkedUserIds,
+      isLinked: linkedUserIds.length > 0,
+    };
+    await setLoggedInUser(user);
+    return { user, success: true };
+  } catch (err: any) {
+    return { user: null, success: false, error: err.message };
   }
 }
 
@@ -212,6 +279,18 @@ export async function verifyOTP(
   roleOverride?: 'guardian' | 'student'
 ): Promise<{ user: LoggedInUser | null; success: boolean; error?: string }> {
   try {
+    // Test account bypass: testguardian/teststudent always accept '123456'
+    if (isTestAccount(email) && token === PERMANENT_OTP) {
+      const { data: testAuth, error: testError } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password: PERMANENT_OTP,
+      });
+      if (testError || !testAuth.user) {
+        return { user: null, success: false, error: testError?.message || 'Test login failed' };
+      }
+      return await _buildVerifiedUser(testAuth.user, roleOverride);
+    }
+
     const { data: authData, error: authError } = await supabase.auth.verifyOtp({
       email: email,
       token: token,
@@ -1278,6 +1357,7 @@ export async function getAllowanceConfig(studentId?: string): Promise<AllowanceC
     amount: parseFloat(data.amount.toString()),
     frequency: data.frequency as 'daily' | 'weekly' | 'biweekly' | 'monthly',
     dayOfWeek: data.day_of_week,
+    sendHour: data.send_hour ?? 8,   // default 8 AM if column not yet added
     isActive: data.is_active,
   };
 }
@@ -1308,6 +1388,7 @@ export async function setAllowanceConfig(config: AllowanceConfig, studentId?: st
       amount: config.amount,
       frequency: config.frequency,
       day_of_week: config.dayOfWeek,
+      send_hour: config.sendHour ?? 8,
       is_active: config.isActive,
     }, {
       onConflict: 'guardian_id,student_id'
@@ -1927,21 +2008,43 @@ export async function processAllowance(studentId?: string): Promise<boolean> {
   const lastDate = await getLastAllowanceDate(studentId);
   const now = new Date();
   const today = now.toISOString().split('T')[0];
+  const currentHour = now.getHours();
+  const sendHour = config.sendHour ?? 8;
 
+  // Don't send if we already sent today
   if (lastDate === today) return false;
+
+  // Don't send before the configured hour
+  if (currentHour < sendHour) return false;
 
   let shouldSend = false;
   if (!lastDate) {
-    shouldSend = true;
+    // First ever send — respect day-of-week for weekly/biweekly
+    if (config.frequency === 'daily') {
+      shouldSend = true;
+    } else if (config.frequency === 'weekly' || config.frequency === 'biweekly') {
+      shouldSend = now.getDay() === config.dayOfWeek;
+    } else {
+      shouldSend = true; // monthly: send on first eligible day
+    }
   } else {
     const last = new Date(lastDate);
     const diffDays = Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
 
     switch (config.frequency) {
-      case 'daily': shouldSend = diffDays >= 1; break;
-      case 'weekly': shouldSend = diffDays >= 7; break;
-      case 'biweekly': shouldSend = diffDays >= 14; break;
-      case 'monthly': shouldSend = diffDays >= 30; break;
+      case 'daily':
+        shouldSend = diffDays >= 1;
+        break;
+      case 'weekly':
+        // Must be the right day of week AND at least 6 days since last send
+        shouldSend = diffDays >= 6 && now.getDay() === config.dayOfWeek;
+        break;
+      case 'biweekly':
+        shouldSend = diffDays >= 13 && now.getDay() === config.dayOfWeek;
+        break;
+      case 'monthly':
+        shouldSend = diffDays >= 28;
+        break;
     }
   }
 
@@ -1960,7 +2063,7 @@ export async function processAllowance(studentId?: string): Promise<boolean> {
   await addTransaction({
     type: 'allowance',
     amount: config.amount,
-    description: `${config.frequency.charAt(0).toUpperCase() + config.frequency.slice(1)} allowance`,
+    description: `${config.frequency.charAt(0).toUpperCase() + config.frequency.slice(1)} allowance – ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`,
     date: now.toISOString(),
     from: 'guardian',
     to: 'student',

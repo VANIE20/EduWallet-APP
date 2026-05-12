@@ -25,18 +25,18 @@ export default function RootLayout() {
 
   return (
     <AppProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
-        <Stack.Screen name="otp-verify" />
-        <Stack.Screen name="forgot-password" />
-        <Stack.Screen name="link-required" />
-        <Stack.Screen name="pending-invites" />
-        <Stack.Screen name="remove-student" />
-        <Stack.Screen name="profile" />
-        <Stack.Screen name="guardian" />
-        <Stack.Screen name="student" />
+      <Stack screenOptions={{ headerShown: false, gestureEnabled: false }}>
+        <Stack.Screen name="index" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="otp-verify" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="forgot-password" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="link-required" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="pending-invites" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="remove-student" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="profile" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="guardian" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="student" options={{ gestureEnabled: false }} />
         <Stack.Screen name="changelog" options={{ presentation: 'modal' }} />
         {/* ── Help Center ── */}
         <Stack.Screen name="help" />

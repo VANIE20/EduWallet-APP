@@ -20,6 +20,7 @@ import {
   notifyLowGuardianBalance,
   notifyGoalBonus,
   notifyGoalRedeemed,
+  notifyGuardianLimitExceeded,
 } from './notifications';
 
 // Low balance threshold — notify guardian when wallet drops below this
@@ -264,7 +265,6 @@ function AppProviderInner({ children }: { children: ReactNode }) {
               await refreshData();
             }
 
-            await Storage.processAllowance();
             await refreshData(selectedStudentIdRef.current ?? undefined);
           } else if (event !== 'INITIAL_SESSION' || !hasValidSession) {
             await Storage.setLoggedInUser(null);
@@ -311,6 +311,35 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     return () => { supabase.removeChannel(channel); };
   }, [loggedInUser, refreshData]);
 
+  // ── Auto-allowance: check once on login and then every hour ──────────────
+  // Deliberately NOT inside onAuthStateChange to prevent firing on every
+  // sign-in event. processAllowance() is idempotent (guards with
+  // last_allowance_date) so calling it multiple times per day is safe, but
+  // we still keep the interval long to avoid unnecessary DB calls.
+  const allowanceCheckedRef = useRef<string | null>(null); // tracks "userId:date" so we only auto-run once per day per user
+  useEffect(() => {
+    if (!loggedInUser || loggedInUser.role !== 'guardian') return;
+
+    const runCheck = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `${loggedInUser.id}:${today}`;
+      if (allowanceCheckedRef.current === key) return; // already ran today
+      allowanceCheckedRef.current = key;
+
+      const studentId = selectedStudentIdRef.current ?? undefined;
+      const sent = await Storage.processAllowance(studentId);
+      if (sent) {
+        await refreshData(studentId);
+      }
+    };
+
+    runCheck();
+
+    // Also re-check every hour in case the app stays open across midnight
+    const interval = setInterval(runCheck, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loggedInUser, refreshData]);
+
   const logoutUser = useCallback(async () => {
     // 1. Remove push token FIRST, while the session is still valid.
     //    We must do this before signOut() because after SIGNED_OUT fires
@@ -341,7 +370,9 @@ function AppProviderInner({ children }: { children: ReactNode }) {
     // 4. Sign out of Supabase so the session token is invalidated.
     try { await Storage.signOut(); } catch { /* ignore */ }
 
-    // 5. Navigate to login — SIGNED_OUT event handler is a no-op (state already cleared).
+    // 5. Navigate to login — dismiss the entire stack first so no previous
+    //    dashboard (guardian or student) remains in history behind the login screen.
+    try { router.dismissAll(); } catch { /* ignore if stack is already empty */ }
     router.replace('/login');
   }, []);
 
@@ -442,12 +473,25 @@ function AppProviderInner({ children }: { children: ReactNode }) {
       await notifyStudentSpent(guardianId, amount, loggedInUser.displayName, description);
     }
 
-    // Warn student if they're near spending limit (80% used)
+    // Warn student if near limit (80%) and notify guardian if limit is hit (100%)
     if (spendingLimit && spendingLimit.isActive && loggedInUser) {
       const newTodaySpent = Storage.getTodaySpent(transactions) + amount;
       const usedPercent = newTodaySpent / spendingLimit.dailyLimit;
-      if (usedPercent >= 0.8) {
+
+      // Warn student at 80% of daily limit
+      if (usedPercent >= 0.8 && usedPercent < 1) {
         await notifySpendingLimitWarning(loggedInUser.id, newTodaySpent, spendingLimit.dailyLimit);
+      }
+
+      // Notify guardian when student hits or exceeds 100% of daily limit
+      if (usedPercent >= 1 && loggedInUser.linkedUserIds?.length > 0) {
+        const guardianId = loggedInUser.linkedUserIds[0];
+        await notifyGuardianLimitExceeded(
+          guardianId,
+          loggedInUser.displayName,
+          newTodaySpent,
+          spendingLimit.dailyLimit
+        );
       }
     }
 

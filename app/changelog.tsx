@@ -13,24 +13,75 @@ interface Entry { type: EntryType; text: string; }
 interface Release { version: string; date: string; label?: string; entries: Entry[]; }
 
 const CHANGELOG: Release[] = [
-  {
-    version: '1.6.0',
-    date: 'May 11, 2026',
-    label: 'Latest',
-    entries: [
-      { type: 'new',         text: 'Walli AI Assistant — a built-in AI-powered help chatbot accessible from the Help Center, powered by Claude.' },
-      { type: 'new',         text: 'Walli automatically saves support conversations as tickets in the database so issues are tracked and can be reviewed.' },
-      { type: 'new',         text: 'Help Center screen redesigned with a dedicated chat interface for Walli, replacing the old static FAQ.' },
-      { type: 'new',         text: 'Avatar upload — users can now set a profile photo from their photo library on the Profile screen.' },
-      { type: 'new',         text: 'Avatar is stored in Supabase Storage and persists across sessions and app restarts.' },
-      { type: 'improvement', text: 'Guardian and Student dashboards now show the profile avatar photo in the top-right corner instead of a letter initial.' },
-      { type: 'improvement', text: 'Profile screen shows the avatar image with a camera button overlay; tapping it opens the photo picker.' },
-      { type: 'fix',         text: 'Fixed "bucket not found" error on avatar upload — storage bucket and RLS policies corrected.' },
-      { type: 'fix',         text: 'Fixed avatar not saving to database — RLS UPDATE policy now matches on auth_user_id instead of id.' },
-      { type: 'fix',         text: 'Fixed avatar disappearing after reload — loadAvatar now correctly queries by auth_user_id.' },
-      { type: 'fix',         text: 'Fixed deprecated ImagePicker.MediaTypeOptions — updated to use string array format.' },
-    ],
-  },
+
+
+{
+  version: '1.6.2',
+  date: 'May 12, 2026',
+  label: 'Latest',
+  entries: [
+    // NEW FEATURES
+    { type: 'new', text: 'Scheduled allowance system upgraded — guardians can now choose an exact send time for automatic allowances.' },
+    { type: 'new', text: 'Auto allowance scheduler now supports proper daily, weekly, and biweekly timing with day-of-week selection.' },
+    { type: 'new', text: 'Allowance history now shows the actual send day and date for clearer tracking.' },
+
+    // IMPROVEMENTS
+    { type: 'improvement', text: 'Schedule screen redesigned with a cleaner "Choose a time" picker instead of the old crowded hour grid.' },
+    { type: 'improvement', text: 'New "Next Auto-Send" preview card shows exactly when the next allowance will be processed.' },
+    { type: 'improvement', text: 'Transaction history expanded from 7 days to 30 days with improved date labels like Today, Yesterday, Mon, Tue, etc.' },
+
+    // FIXES
+    { type: 'fix', text: 'Fixed auto allowance sending repeatedly whenever users signed out and signed back in on the same day.' },
+    { type: 'fix', text: 'Allowance processing moved out of auth state events to prevent duplicate sends during session refresh or login.' },
+    { type: 'fix', text: 'Fixed test account username updates not saving to database when Supabase auth session was missing.' },
+    { type: 'fix', text: 'Added fallback user ID handling for QA/test accounts so profile updates now save correctly.' },
+    { type: 'fix', text: 'Fixed allowance scheduler ignoring configured day-of-week and send time settings.' },
+  ],
+},
+
+{
+  version: '1.6.1',
+  date: 'May 12, 2026',
+  label: 'Latest',
+  entries: [
+    // NEW FEATURES
+    { type: 'new', text: 'Test accounts added for QA — testguardian@eduwallet.com and teststudent@eduwallet.com are pre-linked and accept a permanent OTP code for all verification flows.' },
+    { type: 'new', text: 'Guardian now receives a push notification when a student hits their daily spending limit.' },
+
+    // IMPROVEMENTS
+    { type: 'improvement', text: 'Test accounts skip OTP email sending entirely — no real emails are triggered during testing.' },
+    { type: 'improvement', text: 'Spending limit notifications split into two tiers: student warned at 80% used, guardian notified at 100%.' },
+
+    // FIXES
+    { type: 'fix', text: 'Fixed Guardian dashboard crash — property G was referenced but never defined; added G as a theme alias with missing pill3 and accentSoft properties.' },
+    { type: 'fix', text: 'Fixed guardian_update_goal_amount RPC always returning false — updated to match guardian by auth.uid() directly instead of joining through auth_user_id column.' },
+  ],
+},
+
+{
+  version: '1.6.0',
+  date: 'May 11, 2026',
+  label: 'Latest',
+  entries: [
+    // NEW FEATURES
+    { type: 'new', text: 'Walli AI Assistant — a built-in AI-powered help chatbot accessible from the Help Center, powered by Claude.' },
+    { type: 'new', text: 'Walli automatically saves support conversations as tickets in the database so issues are tracked and can be reviewed.' },
+    { type: 'new', text: 'Help Center screen redesigned with a dedicated chat interface for Walli, replacing the old static FAQ.' },
+    { type: 'new', text: 'Avatar upload — users can now set a profile photo from their photo library on the Profile screen.' },
+    { type: 'new', text: 'Avatar is stored in Supabase Storage and persists across sessions and app restarts.' },
+
+    // IMPROVEMENTS
+    { type: 'improvement', text: 'Guardian and Student dashboards now show the profile avatar photo in the top-right corner instead of a letter initial.' },
+    { type: 'improvement', text: 'Profile screen shows the avatar image with a camera button overlay; tapping it opens the photo picker.' },
+
+    // FIXES
+    { type: 'fix', text: 'Fixed "bucket not found" error on avatar upload — storage bucket and RLS policies corrected.' },
+    { type: 'fix', text: 'Fixed avatar not saving to database — RLS UPDATE policy now matches on auth_user_id instead of id.' },
+    { type: 'fix', text: 'Fixed avatar disappearing after reload — loadAvatar now correctly queries by auth_user_id.' },
+    { type: 'fix', text: 'Fixed deprecated ImagePicker.MediaTypeOptions — updated to use string array format.' },
+  ],
+}
+  ,
   {
     version: '1.5.0',
     date: 'May 10, 2026',

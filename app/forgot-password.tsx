@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import Colors from '../constants/colors';
 import { supabase } from '../lib/supabase';
+import { isTestAccount, PERMANENT_OTP } from '../lib/testAccount';
 
 type Step = 'enterEmail' | 'enterOtp' | 'success';
 
@@ -34,11 +35,14 @@ export default function ForgotPasswordScreen() {
     tap();
 
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) throw otpError;
+      // Test accounts skip the real OTP email
+      if (!isTestAccount(email.trim())) {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: { shouldCreateUser: false },
+        });
+        if (otpError) throw otpError;
+      }
 
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep('enterOtp');
@@ -62,13 +66,16 @@ export default function ForgotPasswordScreen() {
     tap();
 
     try {
-      // Verify OTP
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otpCode.trim(),
-        type: 'email',
-      });
-      if (verifyError) throw new Error('Invalid or expired OTP. Please try again.');
+      // Verify OTP (test accounts accept permanent code without hitting Supabase)
+      const isTestBypass = isTestAccount(email.trim()) && otpCode.trim() === PERMANENT_OTP;
+      if (!isTestBypass) {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          email: email.trim(),
+          token: otpCode.trim(),
+          type: 'email',
+        });
+        if (verifyError) throw new Error('Invalid or expired OTP. Please try again.');
+      }
 
       // Set new PIN as password
       const { error: updateError } = await supabase.auth.updateUser({ password: newPin });
@@ -92,11 +99,13 @@ export default function ForgotPasswordScreen() {
     setError('');
     setIsSubmitting(true);
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) throw otpError;
+      if (!isTestAccount(email.trim())) {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: { shouldCreateUser: false },
+        });
+        if (otpError) throw otpError;
+      }
       Alert.alert('OTP Resent', `A new code was sent to ${email}.`);
     } catch (e: any) {
       setError(e.message || 'Failed to resend OTP.');

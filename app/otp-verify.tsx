@@ -12,6 +12,7 @@ import Colors from '../constants/colors';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../lib/AppContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isTestAccount, PERMANENT_OTP } from '../lib/testAccount';
 
 const LAST_ACTIVE_KEY = 'eduwallet_last_active';
 const DEVICE_VERIFIED_KEY = 'eduwallet_device_verified';
@@ -75,6 +76,12 @@ export default function OTPVerifyScreen() {
 
   const sendOTP = async () => {
     if (!email) return;
+    // Test accounts skip the real OTP email -- just mark as sent immediately
+    if (isTestAccount(email)) {
+      setSent(true);
+      setCountdown(60);
+      return;
+    }
     setSending(true);
     setError('');
     try {
@@ -103,13 +110,16 @@ export default function OTPVerifyScreen() {
     setLoading(true);
     setError('');
     try {
+      // Test account: accept permanent OTP '123456' without hitting Supabase
+      const isTestBypass = isTestAccount(email) && otp === PERMANENT_OTP;
+
       // Supabase signInWithOtp sends 'email' type OTP (numeric code)
       // Try 'email' type; if it fails, also try 'magiclink' for compatibility
-      const res1 = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
-      const res2 = res1.error
+      const res1 = isTestBypass ? { error: null } : await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
+      const res2 = (!isTestBypass && res1.error)
         ? await supabase.auth.verifyOtp({ email, token: otp, type: 'magiclink' })
         : res1;
-      const verifyError = res1.error && res2.error ? res2.error : null;
+      const verifyError = !isTestBypass && res1.error && res2.error ? res2.error : null;
       if (verifyError) {
         setError('Invalid or expired code. Please try again.');
         setOtp('');

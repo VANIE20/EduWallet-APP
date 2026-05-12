@@ -203,12 +203,14 @@ export default function ProfileScreen() {
     }
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not logged in');
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // Fallback to context user ID if auth session is missing (e.g. test accounts)
+      const userId = authUser?.id ?? loggedInUser?.id;
+      if (!userId) throw new Error('Not logged in');
       // Update both possible schema styles — one will match, the other is a no-op
       await Promise.all([
-        supabase.from('users').update({ username: trimmed }).eq('auth_user_id', user.id),
-        supabase.from('users').update({ username: trimmed }).eq('id', user.id),
+        supabase.from('users').update({ username: trimmed }).eq('auth_user_id', userId),
+        supabase.from('users').update({ username: trimmed }).eq('id', userId),
       ]);
       const stored = await getLoggedInUser();
       if (stored) {

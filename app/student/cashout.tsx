@@ -60,7 +60,7 @@ const CASHOUT_OPTIONS: CashoutOption[] = [
 
 export default function CashoutScreen() {
   const insets = useSafeAreaInsets();
-  const { studentBalance, refreshData } = useApp();
+  const { studentBalance, refreshData, cashoutStudent } = useApp();
 
   const [amount, setAmount]           = useState('');
   const [method, setMethod]           = useState<CashoutMethod>('gcash');
@@ -94,16 +94,7 @@ export default function CashoutScreen() {
         setSubmitting(true);
         try {
           await new Promise(r => setTimeout(r, 1500));
-          const { addTransaction, setStudentWallet } = await import('../../lib/storage');
-          await setStudentWallet(studentBalance - parsedAmount);
-          await addTransaction({
-            type: 'expense',
-            amount: parsedAmount,
-            description: `Cash out via ${selMethod.label} to ${accountNo}`,
-            category: 'cashout',
-            date: new Date().toISOString(),
-            from: 'student',
-          });
+          await cashoutStudent(parsedAmount, selMethod.label, selMethod.accountLabel, accountNo);
           await refreshData();
           if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           setDialog({
@@ -125,7 +116,7 @@ export default function CashoutScreen() {
         }
       },
     });
-  }, [isValid, hasEnough, parsedAmount, selMethod, accountNo, studentBalance, refreshData]);
+  }, [isValid, hasEnough, parsedAmount, selMethod, accountNo, studentBalance, refreshData, cashoutStudent]);
 
   return (
     <KeyboardAvoidingView

@@ -22,20 +22,24 @@ function formatFullDate(dateStr: string): string {
   });
 }
 
-function getDailyTotals(transactions: Transaction[]): { label: string; amount: number }[] {
-  const map: Record<string, number> = {};
+function getDailyTotals(transactions: Transaction[]): { label: string; dayName: string; amount: number; date: Date }[] {
+  const map: Record<string, { amount: number; date: Date; dayName: string }> = {};
   const now = new Date();
   transactions.forEach(tx => {
     if (tx.type !== 'deposit' && tx.type !== 'allowance') return;
     const d = new Date(tx.date);
     const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-    if (diffDays >= 7) return;
+    if (diffDays >= 30) return;
     const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    map[key] = (map[key] || 0) + tx.amount;
+    const isToday = diffDays === 0;
+    const isYesterday = diffDays === 1;
+    const dayName = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString('en-US', { weekday: 'short' });
+    if (!map[key]) map[key] = { amount: 0, date: d, dayName };
+    map[key].amount += tx.amount;
   });
   return Object.entries(map)
-    .map(([label, amount]) => ({ label, amount }))
-    .sort((a, b) => new Date(b.label).getTime() - new Date(a.label).getTime());
+    .map(([label, { amount, date, dayName }]) => ({ label, amount, date, dayName }))
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
 function TransactionItem({ item, studentName }: { item: Transaction; studentName?: string }) {
@@ -88,8 +92,7 @@ export default function HistoryScreen() {
   // Sort newest first
   const guardianTx = transactions
     .filter(t => t.type === 'deposit' || t.type === 'allowance')
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 7);
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const dailyTotals = getDailyTotals(transactions);
 
@@ -122,10 +125,13 @@ export default function HistoryScreen() {
 
       {dailyTotals.length > 0 && (
         <View style={styles.dailyCard}>
-          <Text style={styles.dailyTitle}>Daily Activity (Last 7 Days)</Text>
-          {dailyTotals.map(({ label, amount }) => (
+          <Text style={styles.dailyTitle}>Daily Activity (Last 30 Days)</Text>
+          {dailyTotals.map(({ label, dayName, amount }) => (
             <View key={label} style={styles.dailyRow}>
-              <Text style={styles.dailyLabel}>{label}</Text>
+              <View style={styles.dailyLabelWrap}>
+                <Text style={styles.dailyDayName}>{dayName}</Text>
+                <Text style={styles.dailyLabel}>{label}</Text>
+              </View>
               <View style={styles.dailyBarWrap}>
                 <View style={[styles.dailyBar, {
                   width: `${Math.min((amount / Math.max(...dailyTotals.map(d => d.amount))) * 100, 100)}%` as any,
@@ -314,11 +320,18 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     gap: 8,
   },
+  dailyLabelWrap: {
+    width: 72,
+  },
+  dailyDayName: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#1E1E2E',
+  },
   dailyLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_500Medium',
+    fontSize: 10,
+    fontFamily: 'DMSans_400Regular',
     color: '#64748B',
-    width: 60,
   },
   dailyBarWrap: {
     flex: 1,

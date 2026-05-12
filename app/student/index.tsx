@@ -16,17 +16,18 @@ import BottomNav from '../../components/BottomNav';
 import OnboardingTutorial, { shouldShowOnboarding } from '../../components/OnboardingTutorial';
 import AdBanner from '../../components/AdBanner';
 
-// ── Ember palette: warm but deeper ───────────────────────────
+// ── Light Orange palette ──────────────────────────────────────
 const EMBER = {
-  grad1:  '#6B1E00',   // deep burnt sienna
-  grad2:  '#9A2E00',   // dark ember
-  grad3:  '#C84B00',   // glowing orange-brown
-  accent: '#F97316',
-  deep:   '#6B1E00',   // for text on light bg
-  warm:   '#FED7AA',
-  bg:     '#FFF8F2',   // very soft warm white
+  grad1:  '#92400E',   // deep amber-brown
+  grad2:  '#B45309',   // mid amber
+  grad3:  '#D97706',   // golden amber
+  accent: '#F59E0B',
+  deep:   '#78350F',
+  warm:   '#FDE68A',
+  bg:     '#FFFBEB',   // warm yellow-white
+  pill1:  '#FDE68A',
+  pill2:  '#FED7AA',
 };
-
 function formatCurrency(amount: number): string {
   return '₱' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
@@ -102,6 +103,28 @@ function Ring({ pct, size = 64, color = EMBER.accent }: { pct: number; size?: nu
   );
 }
 
+/* ── Stat pill ──────────────────────────────────────────────── */
+function StatPill({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <View style={[sp.pill, { borderColor: accent + '50', backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+      <Text style={[sp.value, { color: '#fff' }]}>{value}</Text>
+      <Text style={sp.label}>{label}</Text>
+    </View>
+  );
+}
+const sp = StyleSheet.create({
+  pill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  value: { fontSize: 14, fontFamily: 'DMSans_700Bold', marginBottom: 2 },
+  label: { fontSize: 10, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.55)', textAlign: 'center' },
+});
+
 export default function StudentDashboard() {
   const insets = useSafeAreaInsets();
   const {
@@ -112,6 +135,7 @@ export default function StudentDashboard() {
   const [localDisplayName, setLocalDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [guardianInfo, setGuardianInfo] = useState<{ name: string; email: string } | null>(null);
 
   useEffect(() => {
     refreshData();
@@ -119,6 +143,18 @@ export default function StudentDashboard() {
       if (u?.displayName && u.displayName !== 'User') {
         setLocalDisplayName(u.displayName);
         if (!loggedInUser) setLoggedInUser(u);
+      }
+      // Fetch guardian name + email using linkedUserIds[0]
+      if (u?.linkedUserIds?.length) {
+        const guardianId = u.linkedUserIds[0];
+        supabase
+          .from('users')
+          .select('display_name, email')
+          .eq('id', guardianId)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data) setGuardianInfo({ name: data.display_name || 'Guardian', email: data.email || '' });
+          });
       }
     });
     shouldShowOnboarding().then(setShowOnboarding);
@@ -149,6 +185,11 @@ export default function StudentDashboard() {
   const activeGoals = savingsGoals.filter(g => g.currentAmount < g.targetAmount).slice(0, 2);
   const totalSaved  = savingsGoals.reduce((s, g) => s + (g.currentAmount || 0), 0);
   const goalCount   = savingsGoals.length;
+
+  const weekSpent = transactions
+    .filter(t => t.type === 'expense')
+    .filter(t => (new Date().getTime() - new Date(t.date).getTime()) < 7 * 86400000)
+    .reduce((s, t) => s + t.amount, 0);
 
   const recentTx = transactions.filter(t => t.type === 'expense' || t.type === 'allowance').slice(0, 7);
 
@@ -216,6 +257,11 @@ export default function StudentDashboard() {
             </View>
           )}
 
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <StatPill label="Today's Spend" value={formatCurrency(todaySpent)} accent={EMBER.pill2} />
+            <StatPill label="Spent This Week" value={formatCurrency(weekSpent)} accent={EMBER.pill1} />
+          </View>
+
           <View style={s.chartDivider} />
           <Text style={s.chartHeading}>Spending this week</Text>
           <WeeklyChart transactions={transactions} />
@@ -243,6 +289,32 @@ export default function StudentDashboard() {
             </Pressable>
           ))}
         </Animated.View>
+
+        {/* Guardian info card */}
+        {guardianInfo && (
+          <Animated.View entering={FadeInDown.delay(220).duration(400)}>
+            <View style={s.guardianCard}>
+              <LinearGradient
+                colors={[EMBER.grad1, EMBER.grad2]}
+                style={s.guardianCardInner}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              >
+                <View style={s.guardianLeft}>
+                  <View style={s.guardianIconWrap}>
+                    <Ionicons name="shield-checkmark" size={18} color="#fff" />
+                  </View>
+                  <View>
+                    <Text style={s.guardianName} numberOfLines={1}>{guardianInfo.name}</Text>
+                    <Text style={s.guardianEmail} numberOfLines={1}>{guardianInfo.email}</Text>
+                  </View>
+                </View>
+                <View style={s.guardianBadge}>
+                  <Text style={s.guardianBadgeText}>Guardian</Text>
+                </View>
+              </LinearGradient>
+            </View>
+          </Animated.View>
+        )}
 
         {/* Spending limit */}
         {limitActive && (
@@ -455,6 +527,27 @@ const s = StyleSheet.create({
   limitFill:    { height: '100%', borderRadius: 3 },
 
   adWrap: { marginBottom: 12 },
+
+  guardianCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 10, padding: 10 },
+  guardianCardInner: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 14, borderRadius: 18,
+  },
+  guardianLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  guardianIconWrap: {
+    width: 38, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  guardianName:  { fontSize: 14, fontFamily: 'DMSans_700Bold', color: '#fff' },
+  guardianEmail: { fontSize: 11, fontFamily: 'DMSans_400Regular', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  guardianBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  guardianBadgeText: { fontSize: 11, fontFamily: 'DMSans_700Bold', color: '#fff' },
 
   card: {
     backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12,

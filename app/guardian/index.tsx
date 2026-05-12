@@ -18,15 +18,23 @@ import OnboardingTutorial, { shouldShowOnboarding } from '../../components/Onboa
 import AdBanner from '../../components/AdBanner';
 
 // ── Guardian theme: Maroon palette ───────────────────────────────
+const EMBER = {
+  grad1:  '#6B1E00',   // deep burnt sienna
+  grad2:  '#9A2E00',   // dark ember
+  grad3:  '#C84B00',   // glowing orange-brown
+  accent: '#F97316',
+  deep:   '#6B1E00',
+  warm:   '#FED7AA',
+  bg:     '#FFF8F2',
+  pill1:  '#FED7AA',
+  pill2:  '#FDE68A',
+};
+
+// G is the active theme alias used throughout this screen
 const G = {
-  grad1: '#3D0000',   // deep maroon
-  grad2: '#6B0F1A',   // rich maroon
-  grad3: '#8B1A1A',   // warm maroon
-  accent: '#C0392B',  // bright maroon accent
-  accentSoft: '#E74C3C',
-  pill1: '#D4A0A0',   // muted rose for stats
-  pill2: '#C49A9A',
-  pill3: '#B08080',
+  ...EMBER,
+  pill3:      '#BBF7D0',   // soft green for student count pill
+  accentSoft: '#FB923C',   // lighter orange for icons/gradients
 };
 
 function formatCurrency(amount: number): string {
