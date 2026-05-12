@@ -134,7 +134,36 @@ components/
 
 # EduWallet Changelog
 
-## v1.6.0 — May 11, 2026 `Latest`
+## v1.6.2 — Smart Scheduling & Automation Upgrade
+✨ New
+Allowance system now supports exact scheduled send time
+Auto-scheduler supports daily, weekly, and biweekly rules with day selection
+Allowance history now shows actual send date and day
+📈 Improvements
+Schedule UI redesigned with clean “Choose a time” picker
+Added “Next Auto-Send” preview card showing exact next payout time
+Transaction history expanded to 30 days with better date labels (Today, Yesterday, Mon, Tue, etc.)
+🛠 Fixes
+Fixed auto allowance sending repeatedly after sign-out/sign-in
+Fixed allowance processing running from auth state events (duplicate trigger bug)
+Fixed test account profile updates not saving when auth session is missing
+Added fallback user ID handling for QA/test accounts
+Fixed scheduler ignoring day-of-week and send-time configuration
+
+## v1.6.1 — QA Stability & System Fixes Update
+✨ New
+Test accounts added for QA (pre-linked + permanent OTP support)
+Guardian now receives push notification when student hits daily spending limit
+📈 Improvements
+Test accounts skip OTP email sending (no real emails during testing)
+Spending limit notifications split into:
+80% warning (student)
+100% alert (guardian)
+🛠 Fixes
+Fixed Guardian dashboard crash caused by missing theme object (G)
+Fixed guardian_update_goal_amount RPC always returning false (auth.uid() fix)
+
+## v1.6.0 — 1.6.0 → Feature Update (AI + Profile System)
 
 ### ✨ New
 
